@@ -1,6 +1,7 @@
 import { Ref } from "ptr.js";
 import { QuickSort } from "../quick-sort";
 import { MergeArray } from "../types";
+import { DataUtils } from "../dataUtils";
 
 export interface TaskLoggerLike {
     debug(...args: any[]): void;
@@ -51,6 +52,19 @@ export type BaseTaskData<AdditionalMeta extends Record<string, any>> = Additiona
     finished_at?: Date;
 }
 
+export class TaskFNRegistry<FNs extends TaskFnRegistry> {
+
+    constructor(
+        protected readonly registry: FNs = {} as FNs
+    ) {}
+
+    public register<Name extends string, FN extends TaskFn>(name: Name, fn: FN) {
+        (this.registry as any)[name] = fn;
+        return this as unknown as FNs & Record<Name, FN>;
+    }
+
+}
+
 export class TaskHandler<FNs extends TaskFnRegistry, TaskData extends BaseTaskData<AdditionalMeta>, AdditionalMeta extends Record<string, any>> {
 
     protected processing = false;
@@ -58,14 +72,10 @@ export class TaskHandler<FNs extends TaskFnRegistry, TaskData extends BaseTaskDa
     protected pendingTasks: TaskData[] = [];
 
     constructor(
-        protected readonly tasks: FNs,
-        protected readonly settings: TaskHandlerSettings<TaskData, AdditionalMeta>
+        protected readonly settings: TaskHandlerSettings<TaskData, AdditionalMeta>,
+        protected readonly tasks: FNs
     ) {
         this.settings.defaultLogger = this.settings.defaultLogger || console;
-    }
-
-    static async createFNRegistry<FNs extends TaskFnRegistry>(fns: MergeArray<FNs[]>) {
-        return fns;
     }
 
     async enqueueTask<Fn extends keyof FNs>(fn: Fn, args: Parameters<FNs[Fn]>[0], additionalMeta?: AdditionalMeta, execOpts?: ExecOptions): Promise<number> {

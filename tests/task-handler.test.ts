@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { BaseTaskData, TaskHandler, TaskLoggerLike } from "../src/queue/taskHandler";
+import { BaseTaskData, TaskFNRegistry, TaskHandler, TaskLoggerLike } from "../src/queue/taskHandler";
 
 type Meta = Record<string, unknown>;
 type TaskData = BaseTaskData<Meta>;
@@ -34,73 +34,57 @@ const createStore = () => {
     };
 };
 
-const createLogger = () => {
-    const logs: Array<{ level: string; message: string }> = [];
-    const logger: TaskLoggerLike = {
-        debug: (...args: any[]) => logs.push({ level: "debug", message: args.join(" ") }),
-        info: (...args: any[]) => logs.push({ level: "info", message: args.join(" ") }),
-        warn: (...args: any[]) => logs.push({ level: "warn", message: args.join(" ") }),
-        error: (...args: any[]) => logs.push({ level: "error", message: args.join(" ") }),
-    };
-    return { logger, logs };
+
+const logs: Array<{ level: string; message: string }> = [];
+const Logger: TaskLoggerLike = {
+    debug: (...args: any[]) => logs.push({ level: "debug", message: args.join(" ") }),
+    info: (...args: any[]) => logs.push({ level: "info", message: args.join(" ") }),
+    warn: (...args: any[]) => logs.push({ level: "warn", message: args.join(" ") }),
+    error: (...args: any[]) => logs.push({ level: "error", message: args.join(" ") }),
 };
+
+
+const tasksRegistry = new TaskFNRegistry()
+
+.register("exampleTask", async (args, logger, isPaused) => {
+
+    logger.info("Running exampleTask with args:", JSON.stringify(args));
+
+    return { success: true, data: args };
+});
+
+const { tasks: tasksStore, saveTask, loadTask, loadPendingTasks } = createStore();
+
+const handler = new TaskHandler({
+    loadTask, loadPendingTasks, saveTask, defaultLogger: Logger
+}, tasksRegistry)
 
 describe("TaskHandler", () => {
     test("processes an enqueued task and marks it completed", async () => {
-        const { tasks, saveTask, loadTask, loadPendingTasks } = createStore();
-        const { logger } = createLogger();
-
-        const handler = new TaskHandler(
-            {
-                async run(args: { example: boolean }, logger, isPaused) {
-                    return { success: true, data: args };
-                }
-            },
-            { loadTask, loadPendingTasks, saveTask, defaultLogger: logger }
-        );
 
         const taskId = await handler.enqueueTask("run", { example: true });
 
-        await waitFor(() => tasks.get(taskId)?.status === "completed");
+        await waitFor(() => tasksStore.get(taskId)?.status === "completed");
 
-        const stored = tasks.get(taskId);
+        const stored = tasksStore.get(taskId);
         expect(stored?.status).toBe("completed");
         expect(stored?.finished_at).toBeInstanceOf(Date);
     });
 
     test("marks a task as failed when the function throws", async () => {
-        const { tasks, saveTask, loadTask, loadPendingTasks } = createStore();
-        const { logger, logs } = createLogger();
 
-        const handler = new TaskHandler(
-            {
-                fail: async (_args) => {
-                    throw new Error("boom");
-                },
-            },
-            { loadTask, loadPendingTasks, saveTask, defaultLogger: logger }
-        );
 
         const taskId = await handler.enqueueTask("fail", { value: 1 });
 
-        await waitFor(() => tasks.get(taskId)?.status === "failed");
+        await waitFor(() => tasksStore.get(taskId)?.status === "failed");
 
-        const stored = tasks.get(taskId);
+        const stored = tasksStore.get(taskId);
         expect(stored?.status).toBe("failed");
         expect(stored?.finished_at).toBeInstanceOf(Date);
         expect(logs.some((l) => l.level === "error")).toBe(true);
     });
 
     test("pulls pending tasks from storage when no in-memory queue exists", async () => {
-        const { tasks, saveTask, loadTask, loadPendingTasks } = createStore();
-        const { logger } = createLogger();
-
-        const handler = new TaskHandler(
-            {
-                run: async (_args) => ({ success: true, data: null }),
-            },
-            { loadTask, loadPendingTasks, saveTask, defaultLogger: logger }
-        );
 
         const pendingId = await saveTask({
             fn: "run",
@@ -110,9 +94,9 @@ describe("TaskHandler", () => {
         });
 
         await handler.processQueue();
-        await waitFor(() => tasks.get(pendingId)?.status === "completed");
+        await waitFor(() => tasksStore.get(pendingId)?.status === "completed");
 
-        expect(tasks.get(pendingId)?.status).toBe("completed");
+        expect(tasksStore.get(pendingId)?.status).toBe("completed");
     });
 });
 
