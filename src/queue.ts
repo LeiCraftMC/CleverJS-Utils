@@ -54,7 +54,7 @@ export class AutoProcessingQueue<T> {
         const ps = new ProcessState(data);
         this.queue.enqueue(ps);
         this.processAll();
-        return ps.proccessed.awaitResult();
+        return ps.proccessed;
     }
 
     public front() { return this.queue.front(); }
@@ -66,8 +66,13 @@ export class AutoProcessingQueue<T> {
 
         while (this.queue.size > 0) {
             const ps = this.queue.dequeue() as ProcessState<T>;
-            this.process(ps);
-            await ps.proccessed.awaitResult();
+            try {
+                await this.process(ps);
+                ps.proccessed.resolve(undefined);
+            } catch (error) {
+                ps.proccessed.reject(error);
+            }
+            await ps.proccessed;
         }
 
         this.processing = false;

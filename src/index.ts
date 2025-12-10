@@ -6,4 +6,6 @@ export * from "./linked-list";
 export * from "./queue";
 export * from "./quick-sort";
 export * from "./schedule";
+export * from "./async-utils";
 export * from "./types";
+export * from "./dataUtils";
