@@ -3,7 +3,7 @@
  * Provided as static methods on a namespaced class for organized access.
  */
 
-import { Delay } from "./delay";
+import { Delay } from "../delay";
 
 export interface RetryOptions {
     retries?: number;

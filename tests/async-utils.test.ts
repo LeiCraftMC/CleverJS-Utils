@@ -1,10 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { AsyncRetry } from "../src/asyncRetry";
-import { BoundedExecutor } from "../src/boundedExecutor";
-import { ThrottledExecutor } from "../src/throttledExecutor";
-import { DebouncedExecutor } from "../src/debouncedExecutor";
-import { AutoProcessingQueue } from "../src/queue";
-import { Delay } from "../src/delay";
+import { AsyncRetry, BoundedExecutor, ThrottledExecutor, DebouncedExecutor, AutoProcessingQueue, Delay, Schedule, Deferred } from "@cleverjs/utils"
 
 describe("delay", () => {
     test("resolves after roughly the requested duration", async () => {
@@ -120,5 +115,17 @@ describe("AutoProcessingQueue", () => {
         ]);
 
         expect(processed).toEqual([1, 2, 3]);
+    });
+});
+
+describe("schedule", () => {
+    test("resolves after delay with correct value", async () => {
+        const result = new Deferred<number>();
+        const start = Date.now();
+        new Schedule(() => result.resolve(42), 100);
+        const value = await result;
+        const elapsed = Date.now() - start;
+        expect(elapsed).toBeGreaterThanOrEqual(100);
+        expect(value).toBe(42);
     });
 });
