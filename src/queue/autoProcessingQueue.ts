@@ -1,23 +1,27 @@
 import { Deferred } from "../async-utils/deferred.js";
 import { Queue } from "./basic.js";
 
-export class ProcessState<T> {
+export class ProcessState<PSData> {
     constructor(
-        public data: T,
+        public data: PSData,
         readonly proccessed = new Deferred()
     ) {}
 }
 
-export class AutoProcessingQueue<T> {
+export interface IAutoProcessingQueue<T> {
+    enqueue(data: T): Promise<void>;
+}
 
-    protected queue = new Queue<ProcessState<T>>();
+export class AutoProcessingQueue<PSData> {
+
+    protected queue = new Queue<ProcessState<PSData>>();
     protected processing = false;
 
     constructor(
-        protected readonly process: (ps: ProcessState<T>) => Promise<void>
+        protected readonly process: (ps: ProcessState<PSData>) => Promise<void>
     ) {}
 
-    public async enqueue(data: T) {
+    public async enqueue(data: PSData) {
         const ps = new ProcessState(data);
         this.queue.enqueue(ps);
         this.processAll();
@@ -32,7 +36,7 @@ export class AutoProcessingQueue<T> {
         this.processing = true;
 
         while (this.queue.size > 0) {
-            const ps = this.queue.dequeue() as ProcessState<T>;
+            const ps = this.queue.dequeue() as ProcessState<PSData>;
             try {
                 await this.process(ps);
                 ps.proccessed.resolve(undefined);
@@ -46,3 +50,4 @@ export class AutoProcessingQueue<T> {
     }
 
 }
+
