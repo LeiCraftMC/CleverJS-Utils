@@ -25,7 +25,7 @@ export type TaskFn = (args: any, logger: TaskLoggerLike) => Promise<TaskReturn<a
 export type TaskFnRegistry = Record<string, TaskFn>;
 
 export interface TaskMetaData {
-    
+
 }
 
 export interface ExecOptions {
@@ -47,6 +47,7 @@ export type BaseTaskData<AdditionalMeta extends Record<string, any>> = Additiona
     fn: string;
     args: any;
     status: 'pending' | 'running' | 'paused' | 'completed' | 'failed';
+    execOptions?: ExecOptions;
     created_at: number;
     finished_at?: Date;
 }
@@ -65,12 +66,13 @@ export class TaskHandler<FNs extends TaskFnRegistry, TaskData extends BaseTaskDa
     }
 
     async enqueueTask<Fn extends keyof FNs>(fn: Fn, args: Parameters<FNs[Fn]>[0], additionalMeta?: AdditionalMeta, execOpts?: ExecOptions): Promise<number> {
-        
+
         const meta = (additionalMeta ?? {}) as AdditionalMeta;
         const taskToSave = {
             ...meta,
             fn: fn as string,
             args,
+            execOptions: execOpts,
             status: 'pending',
             created_at: Date.now()
         } as unknown as Omit<TaskData, 'id'>;
@@ -92,7 +94,7 @@ export class TaskHandler<FNs extends TaskFnRegistry, TaskData extends BaseTaskDa
 
     private async loadPendingTasks(): Promise<Array<TaskData>> {
         const tasks = await this.settings.loadPendingTasks();
-        
+
         // sort so that older tasks are processed first
         return QuickSort.sort(tasks, (base, compare) => {
             return base.created_at - compare.created_at;
@@ -120,7 +122,7 @@ export class TaskHandler<FNs extends TaskFnRegistry, TaskData extends BaseTaskDa
     }
 
     protected async runTask(task: TaskData) {
-        const logger = this.settings.persistentLogger || this.settings.defaultLogger || console;
+        const logger = task.execOptions?.storeLogs ? this.settings.persistentLogger || this.settings.defaultLogger! : this.settings.defaultLogger!;
         const fn = this.tasks[task.fn];
 
         if (!fn) {
