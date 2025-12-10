@@ -1,16 +1,3 @@
-/**
- * Assorted async helpers for common control-flow patterns.
- * Provided as static methods on a namespaced class for organized access.
- */
-
-export interface RetryOptions {
-    retries?: number;
-    baseDelay?: number;
-    factor?: number;
-    maxDelay?: number;
-    shouldRetry?: (error: unknown, attempt: number) => boolean | Promise<boolean>;
-    onRetry?: (error: unknown, attempt: number, nextDelay: number) => void | Promise<void>;
-}
 
 export interface DebounceOptions {
     leading?: boolean;
@@ -18,74 +5,19 @@ export interface DebounceOptions {
     maxWait?: number;
 }
 
-export type Debounced<T extends (...args: any[]) => any> = ((...args: Parameters<T>) => void) & {
+export type DebouncedExecutor<T extends (...args: any[]) => any> = ((...args: Parameters<T>) => void) & {
     cancel: () => void;
     flush: () => ReturnType<T> | undefined;
     pending: () => boolean;
 };
 
-
-
-/** Wait for a given amount of milliseconds. Supports AbortSignal for cancellation. */
-export class Delay {
-    static wait(ms: number, signal?: AbortSignal): Promise<void> {
-        if (signal?.aborted) {
-            return Promise.reject(new Error("Aborted"));
-        }
-
-        return new Promise((resolve, reject) => {
-            const onAbort = () => {
-                clearTimeout(timer);
-                signal?.removeEventListener("abort", onAbort);
-                reject(new Error("Aborted"));
-            };
-
-            const timer = setTimeout(() => {
-                signal?.removeEventListener("abort", onAbort);
-                resolve();
-            }, ms);
-
-            signal?.addEventListener("abort", onAbort, { once: true });
-        });
-    }
+export interface DebouncedExecutorConstructor {
+    new <T extends (...args: any[]) => any>(fn: T, wait: number, options?: DebounceOptions): DebouncedExecutor<T>
 }
 
-/** Retry an async function with exponential backoff. */
-export class Retry {
-    static async run<T>(fn: (attempt: number) => Promise<T>, options?: RetryOptions): Promise<T> {
-        const {
-            retries = 3,
-            baseDelay = 100,
-            factor = 2,
-            maxDelay = Number.POSITIVE_INFINITY,
-            shouldRetry,
-            onRetry,
-        } = options ?? {};
-
-        let attempt = 0;
-
-        while (true) {
-            attempt++;
-            try {
-                return await fn(attempt);
-            } catch (error) {
-                const should = await (shouldRetry ? shouldRetry(error, attempt) : true);
-                if (!should || attempt > retries) {
-                    throw error;
-                }
-
-                const nextDelay = Math.min(baseDelay * Math.pow(factor, attempt - 1), maxDelay);
-                await onRetry?.(error, attempt, nextDelay);
-                await Delay.wait(nextDelay);
-            }
-        }
-    }
-}
-
-/** Debounce a function. Returns a callable with cancel/flush helpers. */
-export class Debounce {
-    static create<T extends (...args: any[]) => any>(fn: T, wait: number, options?: DebounceOptions): Debounced<T> {
-        const leading = options?.leading ?? false;
+/** Throttle a function to at most one execution per window. */
+export const DebouncedExecutor = function <T extends (...args: any[]) => any>(fn: T, wait: number, options?: DebounceOptions) {
+    const leading = options?.leading ?? false;
         const trailing = options?.trailing ?? true;
         const maxWait = options?.maxWait;
 
@@ -142,7 +74,7 @@ export class Debounce {
             }
 
             startTimer();
-        }) as Debounced<T>;
+        }) as DebouncedExecutor<T>;
 
         debounced.cancel = () => {
             if (timer) {
@@ -166,6 +98,6 @@ export class Debounce {
         debounced.pending = () => timer !== null;
 
         return debounced;
-    }
-}
+} as any as DebouncedExecutorConstructor;
+
 

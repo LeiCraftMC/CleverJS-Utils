@@ -4,87 +4,76 @@ export interface ThrottleOptions {
     trailing?: boolean;
 }
 
-export type Throttled<T extends (...args: any[]) => any> = ((...args: Parameters<T>) => void) & {
+export type ThrottledExecutor<T extends (...args: any[]) => any> = ((...args: Parameters<T>) => void) & {
     cancel: () => void;
     pending: () => boolean;
 };
 
+export interface ThrottledExecutorConstructor {
+    new <T extends (...args: any[]) => any>(fn: T, wait: number, options?: ThrottleOptions): ThrottledExecutor<T>;
+}
+
 /** Throttle a function to at most one execution per window. */
-export class ThrottledExecutor<T extends (...args: any[]) => any> {
+export const ThrottledExecutor = function <T extends (...args: any[]) => any>(fn: T, wait: number, options?: ThrottleOptions) {
+    const leading = options?.leading ?? true;
+    const trailing = options?.trailing ?? true;
 
-    protected lastExecution: number;
-    protected timer: ReturnType<typeof setTimeout> | null;
-    protected pendingArgs: Parameters<T> | null;
+    let lastExecution = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let pendingArgs: Parameters<T> | null = null;
 
-    protected options: ThrottleOptions;
-
-    constructor(
-        protected fn: T,
-        protected wait: number,
-        options?: ThrottleOptions
-    ) {
-
-        this.options = options || {};
-        this.options.leading = this.options.leading ?? true;
-        this.options.trailing = this.options.trailing ?? true;
-
-        this.lastExecution = 0;
-        this.timer = null;
-        this.pendingArgs = null;
-    }
-
-    protected invokeFN() {
-        this.lastExecution = Date.now();
-        if (this.pendingArgs) {
-            this.fn(...this.pendingArgs);
-            this.pendingArgs = null;
+    const invoke = () => {
+        lastExecution = Date.now();
+        if (pendingArgs) {
+            fn(...pendingArgs);
+            pendingArgs = null;
         }
     };
 
-    public run(...args: Parameters<T>) {
+    const throttled = ((...args: Parameters<T>) => {
         const now = Date.now();
-        if (!this.options.leading && this.lastExecution === 0) {
-            this.lastExecution = now;
+        if (!leading && lastExecution === 0) {
+            lastExecution = now;
         }
 
-        const remaining = this.wait - (now - this.lastExecution);
-        this.pendingArgs = args;
+        const remaining = wait - (now - lastExecution);
+        pendingArgs = args;
 
         if (remaining <= 0) {
-            if (this.timer) {
-                clearTimeout(this.timer);
-                this.timer = null;
+            if (timer) {
+                clearTimeout(timer);
+                timer = null;
             }
-            if (this.options.leading) {
-                this.invokeFN();
-            } else if (this.options.trailing) {
-                this.timer = setTimeout(() => {
-                    this.invokeFN();
-                    this.timer = null;
-                }, this.wait);
+            if (leading) {
+                invoke();
+            } else if (trailing) {
+                timer = setTimeout(() => {
+                    invoke();
+                    timer = null;
+                }, wait);
             }
             return;
         }
 
-        if (this.options.trailing && !this.timer) {
-            this.timer = setTimeout(() => {
-                this.invokeFN();
-                this.timer = null;
+        if (trailing && !timer) {
+            timer = setTimeout(() => {
+                invoke();
+                timer = null;
             }, remaining);
         }
-    }
+    }) as ThrottledExecutor<T>;
 
-    public cancel() {
-        if (this.timer) {
-            clearTimeout(this.timer);
-            this.timer = null;
+    throttled.cancel = () => {
+        if (timer) {
+            clearTimeout(timer);
+            timer = null;
         }
-        this.pendingArgs = null;
-    }
+        pendingArgs = null;
+    };
 
-    public pending() {
-        return this.timer !== null;
-    }
-}
+    throttled.pending = () => timer !== null;
+
+    return throttled;
+} as any as ThrottledExecutorConstructor;
 
 

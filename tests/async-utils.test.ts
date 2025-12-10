@@ -1,8 +1,10 @@
 import { describe, test, expect } from "bun:test";
-import { Delay, Retry, Debounce } from "../src/async-utils";
+import { AsyncRetry } from "../src/asyncRetry";
 import { BoundedExecutor } from "../src/boundedExecutor";
 import { ThrottledExecutor } from "../src/throttledExecutor";
+import { DebouncedExecutor } from "../src/debouncedExecutor";
 import { AutoProcessingQueue } from "../src/queue";
+import { Delay } from "../src/delay";
 
 describe("delay", () => {
     test("resolves after roughly the requested duration", async () => {
@@ -47,7 +49,7 @@ describe("BoundedExecutor", () => {
 describe("retry", () => {
     test("retries until success", async () => {
         let attempts = 0;
-        const result = await Retry.run(async () => {
+        const result = await AsyncRetry.run(async () => {
             attempts++;
             if (attempts < 3) throw new Error("fail");
             return attempts;
@@ -59,7 +61,7 @@ describe("retry", () => {
 
     test("stops when shouldRetry blocks", async () => {
         let attempts = 0;
-        await expect(Retry.run(async () => {
+        await expect(AsyncRetry.run(async () => {
             attempts++;
             throw new Error("blocked");
         }, {
@@ -73,7 +75,7 @@ describe("retry", () => {
 describe("debounce", () => {
     test("coalesces rapid calls", async () => {
         let count = 0;
-        const fn = Debounce.create(() => { count++; }, 20);
+        const fn = new DebouncedExecutor(() => { count++; }, 20);
         fn();
         fn();
         fn();
@@ -83,7 +85,7 @@ describe("debounce", () => {
 
     test("supports leading execution", async () => {
         let count = 0;
-        const fn = Debounce.create(() => { count++; }, 30, { leading: true, trailing: false });
+        const fn = new DebouncedExecutor(() => { count++; }, 30, { leading: true, trailing: false });
         fn();
         fn();
         await Delay.wait(50);
@@ -95,9 +97,9 @@ describe("throttle", () => {
     test("limits executions per window", async () => {
         let count = 0;
         const fn = new ThrottledExecutor(() => { count++; }, 25);
-        fn.run();
-        fn.run();
-        fn.run();
+        fn();
+        fn();
+        fn();
         await Delay.wait(40);
         expect(count).toBe(2);
     });
