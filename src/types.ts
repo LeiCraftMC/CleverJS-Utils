@@ -36,3 +36,9 @@ export type MergeArray<T extends object[]> =
 export type ArrayToDict<T extends ReadonlyArray<Record<string, any>>, K extends keyof T[number] & (string | number)> = {
 	[P in T[number][K] & (string | number)]: Extract<T[number], Record<K, P>>;
 };
+
+export type DictToArray<T extends Record<string, any>> = {
+	[K in keyof T]: T[K];
+}[keyof T][];
+
+type a = DictToArray<{ a: number; b: string; c: boolean }>;

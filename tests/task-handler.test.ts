@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { BaseTaskData, TaskFNRegistry, TaskHandler, TaskLoggerLike } from "../src/queue/taskHandler";
+import { BaseTaskData, BasicTaskFn, TaskFNRegistry, TaskHandler, TaskLoggerLike, TaskFn } from "../src/queue/taskHandler";
 
 type Meta = Record<string, unknown>;
 type TaskData = BaseTaskData<Meta>;
@@ -58,7 +58,7 @@ const Logger: TaskLoggerLike = {
 
 const tasksRegistry = new TaskFNRegistry()
 
-.register("exampleTask", async (args, logger, isPaused) => {
+.register("exampleTask", async (args: { example: boolean }, logger, isPaused) => {
 
     logger.info("Running exampleTask with args:", JSON.stringify(args));
 
