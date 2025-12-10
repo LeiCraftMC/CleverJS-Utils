@@ -90,7 +90,7 @@ class SortFN<T> {
 }
 
 export namespace QuickSort {
-    export type CompareFunc<T> = (base: T, compare: T) => -1 | 0 | 1;
+    export type CompareFunc<T> = (base: T, compare: T) => number;
 
     export const NumArray = new SortFN<number>((base, compare) => {
         if (base < compare) return -1;

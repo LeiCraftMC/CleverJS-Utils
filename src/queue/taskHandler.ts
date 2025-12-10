@@ -1,3 +1,5 @@
+import { QuickSort } from "../quick-sort";
+
 export interface TaskLoggerLike {
     debug(...args: any[]): void;
     info(...args: any[]): void;
@@ -88,13 +90,22 @@ export class TaskHandler<FNs extends TaskFnRegistry, TaskData extends BaseTaskDa
         return await this.settings.loadTask(id);
     }
 
+    private async loadPendingTasks(): Promise<Array<TaskData>> {
+        const tasks = await this.settings.loadPendingTasks();
+        
+        // sort so that older tasks are processed first
+        return QuickSort.sort(tasks, (base, compare) => {
+            return base.created_at - compare.created_at;
+        }, true)
+    }
+
     async processQueue() {
         if (this.processing || !this.allowedToProcess) return;
         this.processing = true;
 
         try {
             if (this.pendingTasks.length === 0) {
-                const pending = await this.settings.loadPendingTasks();
+                const pending = await this.loadPendingTasks();
                 this.pendingTasks.push(...pending);
             }
 
