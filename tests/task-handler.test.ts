@@ -37,10 +37,22 @@ const createStore = () => {
 
 const logs: Array<{ level: string; message: string }> = [];
 const Logger: TaskLoggerLike = {
-    debug: (...args: any[]) => logs.push({ level: "debug", message: args.join(" ") }),
-    info: (...args: any[]) => logs.push({ level: "info", message: args.join(" ") }),
-    warn: (...args: any[]) => logs.push({ level: "warn", message: args.join(" ") }),
-    error: (...args: any[]) => logs.push({ level: "error", message: args.join(" ") }),
+    debug: (...args: any[]) => {
+        logs.push({ level: "debug", message: args.join(" ") });
+        console.debug(...args);
+    },
+    info: (...args: any[]) => {
+        logs.push({ level: "info", message: args.join(" ") }),
+        console.info(...args);
+    },
+    warn: (...args: any[]) => {
+        logs.push({ level: "warn", message: args.join(" ") });
+        console.warn(...args);
+    },
+    error: (...args: any[]) => {
+        logs.push({ level: "error", message: args.join(" ") });
+        console.error(...args);
+    },
 };
 
 
@@ -51,6 +63,13 @@ const tasksRegistry = new TaskFNRegistry()
     logger.info("Running exampleTask with args:", JSON.stringify(args));
 
     return { success: true, data: args };
+})
+
+.register("willFail", async (args, logger, isPaused) => {
+
+    logger.info("Running willFail with args:", JSON.stringify(args));
+
+    throw new Error("Intentional failure");
 });
 
 const { tasks: tasksStore, saveTask, loadTask, loadPendingTasks } = createStore();
@@ -62,7 +81,7 @@ const handler = new TaskHandler({
 describe("TaskHandler", () => {
     test("processes an enqueued task and marks it completed", async () => {
 
-        const taskId = await handler.enqueueTask("run", { example: true });
+        const taskId = await handler.enqueueTask("exampleTask", { example: true });
 
         await waitFor(() => tasksStore.get(taskId)?.status === "completed");
 
@@ -73,8 +92,7 @@ describe("TaskHandler", () => {
 
     test("marks a task as failed when the function throws", async () => {
 
-
-        const taskId = await handler.enqueueTask("fail", { value: 1 });
+        const taskId = await handler.enqueueTask("willFail", { value: 1 });
 
         await waitFor(() => tasksStore.get(taskId)?.status === "failed");
 
@@ -87,7 +105,7 @@ describe("TaskHandler", () => {
     test("pulls pending tasks from storage when no in-memory queue exists", async () => {
 
         const pendingId = await saveTask({
-            fn: "run",
+            fn: "exampleTask",
             args: { from: "storage" },
             status: "pending",
             created_at: Date.now(),

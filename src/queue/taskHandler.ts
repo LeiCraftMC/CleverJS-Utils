@@ -26,8 +26,6 @@ export type TaskReturn<T> = TaskSuccessResult<T> | TaskErrorResult;
 // export type TaskFn = (args: any, logger: TaskLoggerLike) => Promise<TaskReturn<any>>;
 export type TaskFn = (args: any, logger: TaskLoggerLike, isPaused: Ref<boolean>) => Promise<TaskReturn<any>>;
 
-export type TaskFnRegistry = Record<string, TaskFn>;
-
 export interface ExecOptions {
     autoDelete?: boolean;
     storeLogs?: boolean;
@@ -52,33 +50,40 @@ export type BaseTaskData<AdditionalMeta extends Record<string, any>> = Additiona
     finished_at?: Date;
 }
 
-export class TaskFNRegistry<FNs extends TaskFnRegistry> {
+export class TaskFNRegistry<Registry extends {}> {
 
     constructor(
-        protected readonly registry: FNs = {} as FNs
+        protected readonly registry: Registry = {} as Registry
     ) {}
 
     public register<Name extends string, FN extends TaskFn>(name: Name, fn: FN) {
         (this.registry as any)[name] = fn;
-        return this as unknown as FNs & Record<Name, FN>;
+        return this as unknown as TaskFNRegistry<Registry & { [K in Name]: FN }>; ;
     }
 
 }
 
-export class TaskHandler<FNs extends TaskFnRegistry, TaskData extends BaseTaskData<AdditionalMeta>, AdditionalMeta extends Record<string, any>> {
+export class TaskHandler<FNRegistry extends Record<string, TaskFn>, TaskData extends BaseTaskData<AdditionalMeta>, AdditionalMeta extends Record<string, any>> {
 
     protected processing = false;
     protected isPaused = new Ref<boolean>(false);
     protected pendingTasks: TaskData[] = [];
 
+    protected readonly tasks: FNRegistry;
+
     constructor(
         protected readonly settings: TaskHandlerSettings<TaskData, AdditionalMeta>,
-        protected readonly tasks: FNs
+        tasks: FNRegistry | TaskFNRegistry<FNRegistry>
     ) {
         this.settings.defaultLogger = this.settings.defaultLogger || console;
+        if (tasks instanceof TaskFNRegistry) {
+            this.tasks = tasks['registry'];
+        } else {
+            this.tasks = tasks;
+        }
     }
 
-    async enqueueTask<Fn extends keyof FNs>(fn: Fn, args: Parameters<FNs[Fn]>[0], additionalMeta?: AdditionalMeta, execOpts?: ExecOptions): Promise<number> {
+    async enqueueTask<Fn extends keyof FNRegistry>(fn: Fn, args: Parameters<FNRegistry[Fn]>[0], additionalMeta?: AdditionalMeta, execOpts?: ExecOptions): Promise<number> {
 
         const meta = (additionalMeta ?? {}) as AdditionalMeta;
         const taskToSave = {
