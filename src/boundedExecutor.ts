@@ -24,10 +24,10 @@
  * }
  * ```
  */
-export class BoundedExecutor<T, ThisArg> implements Promise<T | null> {
+export class BoundedExecutor<T, ThisArg, DontThrowOnTimeout extends boolean = false> implements Promise<T | null> {
     
     /** The promise that races between code execution and timeout */
-    private promise: Promise<T | null>;
+    private promise: PromiseBehavior<T, DontThrowOnTimeout>;
 
     /**
      * Creates a new BoundedExecutor and immediately starts the race between
@@ -35,12 +35,14 @@ export class BoundedExecutor<T, ThisArg> implements Promise<T | null> {
      * 
      * @param code - The async function to execute with a time limit
      * @param timeout - The maximum time to wait in milliseconds before returning null
+     * @param thisArg - (Optional) The `this` context to bind when executing the code
+     * @param dontThrowOnTimeout - (Optional) If true, the promise will resolve to null on timeout instead of rejecting
      */
-    constructor(code: () => Promise<T>, timeout: number, thisArg?: ThisArg) {
+    constructor(code: () => Promise<T>, timeout: number, thisArg?: ThisArg | undefined, dontThrowOnTimeout?: DontThrowOnTimeout) {
         this.promise = Promise.race([
             BoundedExecutor.executeCode(code, thisArg),
-            BoundedExecutor.createTimeoutPromise(timeout)
-        ]);
+            BoundedExecutor.createTimeoutPromise(timeout, dontThrowOnTimeout)
+        ]) as PromiseBehavior<T, DontThrowOnTimeout>;
     }
 
     /**
@@ -54,15 +56,15 @@ export class BoundedExecutor<T, ThisArg> implements Promise<T | null> {
         return this.promise;
     }
 
-    public then<TResult1 = T, TResult2 = never>(
-        onfulfilled?: ((value: T | null) => TResult1 | PromiseLike<TResult1>) | undefined | null,
-        onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null
+    public then<TResult1 = AwaitedBehavior<T, DontThrowOnTimeout>, TResult2 = never>(
+        onfulfilled?: ((value: AwaitedBehavior<T, DontThrowOnTimeout> | null) => TResult1 | PromiseLike<TResult1>) | undefined | null,
+        onrejected?: ((reason: Error | string) => TResult2 | PromiseLike<TResult2>) | undefined | null
     ): Promise<TResult1 | TResult2> {
         return this.promise.then(onfulfilled, onrejected);
     }
 
     public catch<TResult = never>(
-        onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null
+        onrejected?: ((reason: Error | string) => TResult | PromiseLike<TResult>) | undefined | null
     ): Promise<T | null | TResult> {
         return this.promise.catch(onrejected);
     }
@@ -79,9 +81,15 @@ export class BoundedExecutor<T, ThisArg> implements Promise<T | null> {
         return code();
     }
 
-    protected static createTimeoutPromise(timeout: number) {
-        return new Promise<null>((resolve) => {
-            setTimeout(() => resolve(null), timeout);
+    protected static createTimeoutPromise(timeout: number, dontThrowOnTimeout = false): Promise<null> {
+        return new Promise<null>((resolve, reject) => {
+            setTimeout(() => {
+                if (dontThrowOnTimeout) {
+                    resolve(null);
+                } else {
+                    reject(new Error("Operation timed out"));
+                }
+            }, timeout);
         });
     }
 
@@ -89,3 +97,6 @@ export class BoundedExecutor<T, ThisArg> implements Promise<T | null> {
         return this.constructor.name;
     }
 }
+
+type PromiseBehavior<T, DontThrowOnTimeout extends boolean> = DontThrowOnTimeout extends true ? Promise<T | null> : Promise<T>;
+type AwaitedBehavior<T, DontThrowOnTimeout extends boolean> = DontThrowOnTimeout extends true ? T | null : T;

@@ -1,7 +1,9 @@
 import { describe, test, expect } from "bun:test";
-import { delay, withTimeout, retry, debounce, throttle } from "../src/async-utils";
+import { AsyncUtils } from "../src/async-utils";
+import { BoundedExecutor } from "../src/boundedExecutor";
 import { AutoProcessingQueue } from "../src/queue";
 
+const { delay, retry, debounce, throttle } = AsyncUtils;
 const margin = 8;
 
 describe("delay", () => {
@@ -20,14 +22,25 @@ describe("delay", () => {
     });
 });
 
-describe("withTimeout", () => {
+describe("BoundedExecutor", () => {
     test("resolves before timeout", async () => {
-        const result = await withTimeout(Promise.resolve("ok"), 50);
+        const result = await new BoundedExecutor(async () => "ok", 50);
         expect(result).toBe("ok");
     });
 
-    test("rejects when timeout elapses first", async () => {
-        await expect(withTimeout(delay(30), 10)).rejects.toThrow("timed out");
+    test("throws null when timeout elapses first", async () => {
+        const result = await new BoundedExecutor(async () => {
+            await delay(30);
+            return "done";
+        }, 10).then();
+    });
+
+    test("returns null when dontThrowOnTimeout is true", async () => {
+        const result = await new BoundedExecutor(async () => {
+            await delay(30);
+            return "done";
+        }, 10, undefined, true).then();
+        expect(result).toBeNull();
     });
 });
 
