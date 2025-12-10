@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
 import { BaseTaskData, TaskHandler, TaskLoggerLike } from "../src/queue/taskHandler";
 
 type Meta = Record<string, unknown>;
@@ -53,7 +52,9 @@ describe("TaskHandler", () => {
 
         const handler = new TaskHandler(
             {
-                run: async (_args) => ({ success: true, data: null }),
+                async run(args: { example: boolean }, logger, isPaused) {
+                    return { success: true, data: args };
+                }
             },
             { loadTask, loadPendingTasks, saveTask, defaultLogger: logger }
         );
@@ -115,5 +116,3 @@ describe("TaskHandler", () => {
     });
 });
 
-
-describe("TaskHandler tests", () => {});

@@ -1,3 +1,4 @@
+import { ArrayToDict, MergeArray } from "./types";
 
 export class DataUtils {
 
@@ -33,6 +34,19 @@ export class DataUtils {
             return str;
         }
         return str.substring(0, nextIndex) + replaceValue + str.substring(nextIndex + searchValue.length);
+    }
+
+    static mergeObjects<T extends object[]>(...objects: T): MergeArray<T> {
+        return Object.assign({}, ...objects) as MergeArray<T>;
+    }
+
+    static arrayToDict<T extends ReadonlyArray<Record<string, any>>, K extends keyof T[number] & string>(arr: T, key: K): ArrayToDict<T, K> {
+        const dict = {} as ArrayToDict<T, K>;
+        for (const item of arr) {
+            const dictKey = item[key];
+            (dict as any)[dictKey] = item;
+        }
+        return dict;
     }
 
 }

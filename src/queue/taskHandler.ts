@@ -1,4 +1,6 @@
+import { Ref } from "ptr.js";
 import { QuickSort } from "../quick-sort";
+import { MergeArray } from "../types";
 
 export interface TaskLoggerLike {
     debug(...args: any[]): void;
@@ -20,13 +22,10 @@ export interface TaskSuccessResult<T> {
 
 export type TaskReturn<T> = TaskSuccessResult<T> | TaskErrorResult;
 
-export type TaskFn = (args: any, logger: TaskLoggerLike) => Promise<TaskReturn<any>>;
+// export type TaskFn = (args: any, logger: TaskLoggerLike) => Promise<TaskReturn<any>>;
+export type TaskFn = (args: any, logger: TaskLoggerLike, isPaused: Ref<boolean>) => Promise<TaskReturn<any>>;
 
 export type TaskFnRegistry = Record<string, TaskFn>;
-
-export interface TaskMetaData {
-
-}
 
 export interface ExecOptions {
     autoDelete?: boolean;
@@ -55,7 +54,7 @@ export type BaseTaskData<AdditionalMeta extends Record<string, any>> = Additiona
 export class TaskHandler<FNs extends TaskFnRegistry, TaskData extends BaseTaskData<AdditionalMeta>, AdditionalMeta extends Record<string, any>> {
 
     protected processing = false;
-    protected allowedToProcess = true;
+    protected isPaused = new Ref<boolean>(false);
     protected pendingTasks: TaskData[] = [];
 
     constructor(
@@ -63,6 +62,10 @@ export class TaskHandler<FNs extends TaskFnRegistry, TaskData extends BaseTaskDa
         protected readonly settings: TaskHandlerSettings<TaskData, AdditionalMeta>
     ) {
         this.settings.defaultLogger = this.settings.defaultLogger || console;
+    }
+
+    static async createFNRegistry<FNs extends TaskFnRegistry>(fns: MergeArray<FNs[]>) {
+        return fns;
     }
 
     async enqueueTask<Fn extends keyof FNs>(fn: Fn, args: Parameters<FNs[Fn]>[0], additionalMeta?: AdditionalMeta, execOpts?: ExecOptions): Promise<number> {
@@ -102,7 +105,7 @@ export class TaskHandler<FNs extends TaskFnRegistry, TaskData extends BaseTaskDa
     }
 
     async processQueue() {
-        if (this.processing || !this.allowedToProcess) return;
+        if (this.processing || this.isPaused.getV()) return;
         this.processing = true;
 
         try {
@@ -111,7 +114,7 @@ export class TaskHandler<FNs extends TaskFnRegistry, TaskData extends BaseTaskDa
                 this.pendingTasks.push(...pending);
             }
 
-            while (this.allowedToProcess && this.pendingTasks.length > 0) {
+            while (!this.isPaused.getV() && this.pendingTasks.length > 0) {
                 const nextTask = this.pendingTasks.shift();
                 if (!nextTask) continue;
                 await this.runTask(nextTask);
@@ -133,7 +136,7 @@ export class TaskHandler<FNs extends TaskFnRegistry, TaskData extends BaseTaskDa
         task.status = 'running';
 
         try {
-            const result = await fn(task.args, logger);
+            const result = await fn(task.args, logger, this.isPaused);
             task.status = result.success ? 'completed' : 'failed';
             task.finished_at = new Date();
 
@@ -148,7 +151,7 @@ export class TaskHandler<FNs extends TaskFnRegistry, TaskData extends BaseTaskDa
     }
 
     async stopProcessing() {
-        this.allowedToProcess = false;
+        this.isPaused.setV(true);
     }
 
 }
