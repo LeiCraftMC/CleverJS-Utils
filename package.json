@@ -35,5 +35,8 @@
     },
     "publishConfig": {
         "access": "public"
+    },
+    "dependencies": {
+        "low-level": "^1.2.5"
     }
 }

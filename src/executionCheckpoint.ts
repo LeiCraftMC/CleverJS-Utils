@@ -21,7 +21,7 @@ export class ExecutionCheckpoint {
 
     /** Wait for the checkpoint to be passed. */
     public passing() {
-        return this.deferred.awaitResult();
+        return this.deferred;
     }
 
     /** Check if the checkpoint has already been passed. */
