@@ -32,7 +32,9 @@ describe("BoundedExecutor", () => {
         const result = await new BoundedExecutor(async () => {
             await delay(30);
             return "done";
-        }, 10).then();
+        }, 10).catch((e) => e);
+        expect(result).toBeInstanceOf(Error);
+        expect((result as Error).message).toBe("Operation timed out");
     });
 
     test("returns null when dontThrowOnTimeout is true", async () => {
