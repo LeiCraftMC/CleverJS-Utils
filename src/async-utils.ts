@@ -24,15 +24,7 @@ export type Debounced<T extends (...args: any[]) => any> = ((...args: Parameters
     pending: () => boolean;
 };
 
-export interface ThrottleOptions {
-    leading?: boolean;
-    trailing?: boolean;
-}
 
-export type Throttled<T extends (...args: any[]) => any> = ((...args: Parameters<T>) => void) & {
-    cancel: () => void;
-    pending: () => boolean;
-};
 
 /** Wait for a given amount of milliseconds. Supports AbortSignal for cancellation. */
 export class Delay {
@@ -177,73 +169,3 @@ export class Debounce {
     }
 }
 
-/** Throttle a function to at most one execution per window. */
-export class Throttle {
-    static create<T extends (...args: any[]) => any>(fn: T, wait: number, options?: ThrottleOptions): Throttled<T> {
-        const leading = options?.leading ?? true;
-        const trailing = options?.trailing ?? true;
-
-        let lastExecution = 0;
-        let timer: ReturnType<typeof setTimeout> | null = null;
-        let pendingArgs: Parameters<T> | null = null;
-
-        const invoke = () => {
-            lastExecution = Date.now();
-            if (pendingArgs) {
-                fn(...pendingArgs);
-                pendingArgs = null;
-            }
-        };
-
-        const throttled = ((...args: Parameters<T>) => {
-            const now = Date.now();
-            if (!leading && lastExecution === 0) {
-                lastExecution = now;
-            }
-
-            const remaining = wait - (now - lastExecution);
-            pendingArgs = args;
-
-            if (remaining <= 0) {
-                if (timer) {
-                    clearTimeout(timer);
-                    timer = null;
-                }
-                if (leading) {
-                    invoke();
-                } else if (trailing) {
-                    timer = setTimeout(() => {
-                        invoke();
-                        timer = null;
-                    }, wait);
-                }
-                return;
-            }
-
-            if (trailing && !timer) {
-                timer = setTimeout(() => {
-                    invoke();
-                    timer = null;
-                }, remaining);
-            }
-        }) as Throttled<T>;
-
-        throttled.cancel = () => {
-            if (timer) {
-                clearTimeout(timer);
-                timer = null;
-            }
-            pendingArgs = null;
-        };
-
-        throttled.pending = () => timer !== null;
-
-        return throttled;
-    }
-}
-
-// Convenience aliases (optional): keep simple function-style imports available.
-export const delay = Delay.wait;
-export const retry = Retry.run;
-export const debounce = Debounce.create;
-export const throttle = Throttle.create;

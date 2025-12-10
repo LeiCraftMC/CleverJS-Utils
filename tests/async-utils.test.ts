@@ -1,16 +1,15 @@
 import { describe, test, expect } from "bun:test";
-import { Delay, Retry, Debounce, Throttle } from "../src/async-utils";
+import { Delay, Retry, Debounce } from "../src/async-utils";
 import { BoundedExecutor } from "../src/boundedExecutor";
+import { ThrottledExecutor } from "../src/throttledExecutor";
 import { AutoProcessingQueue } from "../src/queue";
-
-const margin = 8;
 
 describe("delay", () => {
     test("resolves after roughly the requested duration", async () => {
         const start = Date.now();
         await Delay.wait(25);
         const elapsed = Date.now() - start;
-        expect(elapsed).toBeGreaterThanOrEqual(25 - margin);
+        expect(elapsed).toBeGreaterThanOrEqual(17);
     });
 
     test("rejects when aborted", async () => {
@@ -95,10 +94,10 @@ describe("debounce", () => {
 describe("throttle", () => {
     test("limits executions per window", async () => {
         let count = 0;
-        const fn = Throttle.create(() => { count++; }, 25);
-        fn();
-        fn();
-        fn();
+        const fn = new ThrottledExecutor(() => { count++; }, 25);
+        fn.run();
+        fn.run();
+        fn.run();
         await Delay.wait(40);
         expect(count).toBe(2);
     });
