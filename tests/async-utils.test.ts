@@ -1,22 +1,21 @@
 import { describe, test, expect } from "bun:test";
-import { AsyncUtils } from "../src/async-utils";
+import { Delay, Retry, Debounce, Throttle } from "../src/async-utils";
 import { BoundedExecutor } from "../src/boundedExecutor";
 import { AutoProcessingQueue } from "../src/queue";
 
-const { delay, retry, debounce, throttle } = AsyncUtils;
 const margin = 8;
 
 describe("delay", () => {
     test("resolves after roughly the requested duration", async () => {
         const start = Date.now();
-        await delay(25);
+        await Delay.wait(25);
         const elapsed = Date.now() - start;
         expect(elapsed).toBeGreaterThanOrEqual(25 - margin);
     });
 
     test("rejects when aborted", async () => {
         const controller = new AbortController();
-        const promise = delay(50, controller.signal);
+        const promise = Delay.wait(50, controller.signal);
         controller.abort();
         await expect(promise).rejects.toThrow("Aborted");
     });
@@ -28,20 +27,20 @@ describe("BoundedExecutor", () => {
         expect(result).toBe("ok");
     });
 
-    test("throws null when timeout elapses first", async () => {
-        const result = await new BoundedExecutor(async () => {
-            await delay(30);
+    test("rejects when timeout elapses first", async () => {
+        const err = await new BoundedExecutor(async () => {
+            await Delay.wait(30);
             return "done";
-        }, 10).catch((e) => e);
-        expect(result).toBeInstanceOf(Error);
-        expect((result as Error).message).toBe("Operation timed out");
+        }, 10).catch(e => e);
+        expect(err).toBeInstanceOf(Error);
+        expect((err as any as Error).message).toBe("Operation timed out");
     });
 
     test("returns null when dontThrowOnTimeout is true", async () => {
         const result = await new BoundedExecutor(async () => {
-            await delay(30);
+            await Delay.wait(30);
             return "done";
-        }, 10, undefined, true).then();
+        }, 10, undefined, true);
         expect(result).toBeNull();
     });
 });
@@ -49,7 +48,7 @@ describe("BoundedExecutor", () => {
 describe("retry", () => {
     test("retries until success", async () => {
         let attempts = 0;
-        const result = await retry(async () => {
+        const result = await Retry.run(async () => {
             attempts++;
             if (attempts < 3) throw new Error("fail");
             return attempts;
@@ -61,7 +60,7 @@ describe("retry", () => {
 
     test("stops when shouldRetry blocks", async () => {
         let attempts = 0;
-        await expect(retry(async () => {
+        await expect(Retry.run(async () => {
             attempts++;
             throw new Error("blocked");
         }, {
@@ -75,20 +74,20 @@ describe("retry", () => {
 describe("debounce", () => {
     test("coalesces rapid calls", async () => {
         let count = 0;
-        const fn = debounce(() => { count++; }, 20);
+        const fn = Debounce.create(() => { count++; }, 20);
         fn();
         fn();
         fn();
-        await delay(35);
+        await Delay.wait(35);
         expect(count).toBe(1);
     });
 
     test("supports leading execution", async () => {
         let count = 0;
-        const fn = debounce(() => { count++; }, 30, { leading: true, trailing: false });
+        const fn = Debounce.create(() => { count++; }, 30, { leading: true, trailing: false });
         fn();
         fn();
-        await delay(50);
+        await Delay.wait(50);
         expect(count).toBe(1);
     });
 });
@@ -96,11 +95,11 @@ describe("debounce", () => {
 describe("throttle", () => {
     test("limits executions per window", async () => {
         let count = 0;
-        const fn = throttle(() => { count++; }, 25);
+        const fn = Throttle.create(() => { count++; }, 25);
         fn();
         fn();
         fn();
-        await delay(40);
+        await Delay.wait(40);
         expect(count).toBe(2);
     });
 });
@@ -109,7 +108,7 @@ describe("AutoProcessingQueue", () => {
     test("processes items sequentially", async () => {
         const processed: number[] = [];
         const queue = new AutoProcessingQueue<number>(async (ps) => {
-            await delay(5);
+            await Delay.wait(5);
             processed.push(ps.data);
         });
 

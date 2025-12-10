@@ -34,10 +34,9 @@ export type Throttled<T extends (...args: any[]) => any> = ((...args: Parameters
     pending: () => boolean;
 };
 
-export class AsyncUtils {
-
-    /** Wait for a given amount of milliseconds. Supports AbortSignal for cancellation. */
-    static delay(ms: number, signal?: AbortSignal): Promise<void> {
+/** Wait for a given amount of milliseconds. Supports AbortSignal for cancellation. */
+export class Delay {
+    static wait(ms: number, signal?: AbortSignal): Promise<void> {
         if (signal?.aborted) {
             return Promise.reject(new Error("Aborted"));
         }
@@ -57,9 +56,11 @@ export class AsyncUtils {
             signal?.addEventListener("abort", onAbort, { once: true });
         });
     }
+}
 
-    /** Retry an async function with exponential backoff. */
-    static async retry<T>(fn: (attempt: number) => Promise<T>, options?: RetryOptions): Promise<T> {
+/** Retry an async function with exponential backoff. */
+export class Retry {
+    static async run<T>(fn: (attempt: number) => Promise<T>, options?: RetryOptions): Promise<T> {
         const {
             retries = 3,
             baseDelay = 100,
@@ -83,13 +84,15 @@ export class AsyncUtils {
 
                 const nextDelay = Math.min(baseDelay * Math.pow(factor, attempt - 1), maxDelay);
                 await onRetry?.(error, attempt, nextDelay);
-                await AsyncUtils.delay(nextDelay);
+                await Delay.wait(nextDelay);
             }
         }
     }
+}
 
-    /** Debounce a function. Returns a callable with cancel/flush helpers. */
-    static debounce<T extends (...args: any[]) => any>(fn: T, wait: number, options?: DebounceOptions): Debounced<T> {
+/** Debounce a function. Returns a callable with cancel/flush helpers. */
+export class Debounce {
+    static create<T extends (...args: any[]) => any>(fn: T, wait: number, options?: DebounceOptions): Debounced<T> {
         const leading = options?.leading ?? false;
         const trailing = options?.trailing ?? true;
         const maxWait = options?.maxWait;
@@ -172,9 +175,11 @@ export class AsyncUtils {
 
         return debounced;
     }
+}
 
-    /** Throttle a function to at most one execution per window. */
-    static throttle<T extends (...args: any[]) => any>(fn: T, wait: number, options?: ThrottleOptions): Throttled<T> {
+/** Throttle a function to at most one execution per window. */
+export class Throttle {
+    static create<T extends (...args: any[]) => any>(fn: T, wait: number, options?: ThrottleOptions): Throttled<T> {
         const leading = options?.leading ?? true;
         const trailing = options?.trailing ?? true;
 
@@ -236,3 +241,9 @@ export class AsyncUtils {
         return throttled;
     }
 }
+
+// Convenience aliases (optional): keep simple function-style imports available.
+export const delay = Delay.wait;
+export const retry = Retry.run;
+export const debounce = Debounce.create;
+export const throttle = Throttle.create;
