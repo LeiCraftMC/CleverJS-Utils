@@ -206,6 +206,11 @@ describe("TaskHandler", () => {
         const stored = await handler.getTask(taskId) as any;
         expect(stored?.status).toBe("paused");
 
+        const pausedState = await store.loadPausedTaskState(taskId);
+        expect(pausedState).toBeDefined();
+        expect(pausedState?.nextStepToExecute).toBeDefined();
+        expect(pausedState?.data.doneCount).toBe(3);
+
         await handler2.processQueue();
 
         await waitFor(async () => (await handler.getTask(taskId) as any)?.status === "completed", 5000);
