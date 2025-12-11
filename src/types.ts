@@ -41,4 +41,4 @@ export type DictToArray<T extends Record<string, any>> = {
 	[K in keyof T]: T[K];
 }[keyof T][];
 
-type a = DictToArray<{ a: number; b: string; c: boolean }>;
+export type Optional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;

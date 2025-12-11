@@ -2,6 +2,7 @@ import { Ref } from "ptr.js";
 import { QuickSort } from "../quick-sort";
 import { DataUtils } from "../dataUtils";
 import { Deferred } from "../async-utils/deferred";
+import { Optional } from "../types";
 
 
 
@@ -40,10 +41,13 @@ export class TaskHandler<FNRegistry extends Record<string, TaskHandler.TaskFn>, 
             ...meta,
             fn: fn as string,
             args,
-            execOptions: execOpts,
+            execOptions: execOpts || null,
             status: 'pending',
-            created_at: Date.now()
-        } as unknown as Omit<TaskData, 'id'>;
+            created_at: Date.now(),
+            finished_at: null,
+            result: null,
+            message: null
+        } as any as Omit<TaskData, 'id'>;
 
         const id = await this.storage.createTask(taskToSave);
 
@@ -131,10 +135,8 @@ export class TaskHandler<FNRegistry extends Record<string, TaskHandler.TaskFn>, 
                     }
                     task.status = result.success ? 'completed' : 'failed';
                     task.finished_at = Date.now();
-
-                    if (!result.success) {
-                        logger.error(result.message);
-                    }
+                    task.result = result.success ? result.data : null;
+                    task.message = result.message || null;
                 }
 
             } else {
@@ -142,14 +144,15 @@ export class TaskHandler<FNRegistry extends Record<string, TaskHandler.TaskFn>, 
                 const result = await fn(task.args, logger);
                 task.status = result.success ? 'completed' : 'failed';
                 task.finished_at = Date.now();
+                task.result = result.success ? result.data : null;
+                task.message = result.message || null;
 
-                if (!result.success) {
-                    logger.error(result.message);
-                }
             }
         } catch (error) {
             task.status = 'failed';
             task.finished_at = Date.now();
+            task.result = null;
+            task.message = null;
             logger.error('Task execution failed.', error);
         }
 
@@ -187,19 +190,20 @@ export namespace TaskHandler {
         success: false;
         message: string;
     }
-    export interface TaskSuccessResult {
+    export interface TaskSuccessResult<T> {
         success: true;
         message?: string;
+        data?: T;
     }
 
-    export type TaskReturn = TaskSuccessResult | TaskErrorResult;
+    export type TaskReturn<T> = TaskSuccessResult<T> | TaskErrorResult;
 
-    export type StepBasedTaskReturn = (TaskSuccessResult | TaskErrorResult) & {
+    export type StepBasedTaskReturn = (Optional<TaskSuccessResult<any>, "data"> | TaskErrorResult) & {
         paused?: boolean;
     }
 
     export interface AbstractTaskFn {
-        (args: any, logger: TaskLoggerLike, ...args2: any): Promise<TaskReturn>
+        (args: any, logger: TaskLoggerLike, ...args2: any): Promise<TaskReturn<any>>
     }
 
     export interface TaskFn extends AbstractTaskFn {
@@ -208,7 +212,7 @@ export namespace TaskHandler {
     }
 
     export interface BasicTaskFn {
-        (args: any, logger: TaskLoggerLike): Promise<TaskReturn>;
+        (args: any, logger: TaskLoggerLike): Promise<TaskReturn<any>>;
     }
 
     export const BasicTaskFn = function (name: string, fn: BasicTaskFn) {
@@ -270,9 +274,14 @@ export namespace TaskHandler {
                     // dont update nextStepToExecute, so we can resume here
                     return { success: true, paused: true };
                 }
+
+                const isLast = i === (steps.length - 1);
+                if (isLast) {
+                    return { success: true, paused: false };
+                }
             }
 
-            return { success: true, paused: false };
+            return { success: true, data: null, paused: false };
         }
 
         fn.addStep = function (description: string, stepFn: SubTaskStepFn) {
@@ -285,7 +294,7 @@ export namespace TaskHandler {
 
         return fn;
     } as any as {
-        new <Name extends string, RootFN extends SubTaskStepFn>(name: Name, rootStepFN: RootFN):  StepBasedTaskFnInstance<Name, RootFN>;
+        new <Name extends string, RootFN extends SubTaskStepFn>(name: Name, rootStepFN: RootFN): StepBasedTaskFnInstance<Name, RootFN>;
     }
 
 
@@ -336,11 +345,13 @@ export namespace TaskHandler {
     export type BaseTaskData<AdditionalMeta extends Record<string, any>> = AdditionalMeta & {
         id: number;
         fn: string;
-        args: any;
+        args: Record<string, any>;
         status: 'pending' | 'running' | 'paused' | 'completed' | 'failed';
-        execOptions?: TaskExecOptions;
+        execOptions: TaskExecOptions | null;
         created_at: number;
-        finished_at?: number;
+        finished_at: number | null;
+        result: Record<string, any> | null;
+        message: string | null;
     }
 
     export interface TempPausedTaskState {

@@ -118,7 +118,7 @@ const stepBasedExampleTask = new TaskHandler.StepBasedTaskFn("stepBasedExample",
             state.data.doneCount = i + 1;
             logger.info(`Second Long Step progress: ${state.data.doneCount}/${args.count}`);
         }
-        return { success: true };
+        return { success: true, data: null };
     });
 
 const tasksRegistry = new TaskHandler.TaskFNRegistry()
@@ -127,14 +127,14 @@ const tasksRegistry = new TaskHandler.TaskFNRegistry()
 
         // logger.info("Running exampleTask with args:", JSON.stringify(args));
 
-        return { success: true };
+        return { success: true, data: null };
     })
 
     .register("willFail", async (args, logger) => {
 
         // logger.info("Running willFail with args:", JSON.stringify(args));
 
-        return { success: false, message: "This task is meant to fail" };
+        return { success: false, data: null, message: "This task is meant to fail" };
     })
 
     .register(stepBasedExampleTask);
@@ -173,7 +173,7 @@ describe("TaskHandler", () => {
         const stored = await handler.getTask(taskId) as any;
         expect(stored?.status).toBe("failed");
         expect(stored?.finished_at).toBeNumber()
-        expect(logs.some((l) => l.level === "error")).toBe(true);
+        expect(stored?.message).toBe("This task is meant to fail");
     });
 
     test("pulls pending tasks from storage when no in-memory queue exists", async () => {
