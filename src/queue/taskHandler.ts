@@ -176,6 +176,7 @@ export interface TempPausedTaskState {
 export interface TaskHandlerSettings<TaskData extends BaseTaskData<AdditionalMeta>, AdditionalMeta extends Record<string, any>> {
     loadTask: (id: number) => Promise<TaskData | null>;
     loadPendingTasks: () => Promise<Array<TaskData>>;
+    loadFinishedTasksWithAutoDelete: () => Promise<Array<TaskData>>;
     saveTask: (data: Omit<TaskData, 'id'>) => Promise<number>;
     deleteTask: (id: number) => Promise<void>;
 
@@ -305,6 +306,11 @@ export class TaskHandler<FNRegistry extends Record<string, TaskFn>, TaskData ext
                         await this.settings.deleteTaskState(task.id);
                     }
                     task.status = result.success ? 'completed' : 'failed';
+                    task.finished_at = Date.now();
+
+                    if (!result.success) {
+                        logger.error(result.message);
+                    }
                 }
 
             } else {
@@ -324,6 +330,17 @@ export class TaskHandler<FNRegistry extends Record<string, TaskFn>, TaskData ext
         }
 
         await this.settings.saveTask(task);
+    }
+
+    async deleteOldCompletedTasks(thresholdInHours: number) {
+        const thresholdTime = Date.now() - thresholdInHours * 3600 * 1000;
+        const tasks = await this.settings.loadFinishedTasksWithAutoDelete();
+
+        for (const task of tasks) {
+            if (task.finished_at && task.finished_at < thresholdTime) {
+                await this.settings.deleteTask(task.id);
+            }
+        }
     }
 
     async stopProcessing() {
