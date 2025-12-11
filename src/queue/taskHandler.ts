@@ -1,6 +1,5 @@
 import { Ref } from "ptr.js";
 import { QuickSort } from "../quick-sort";
-import { MergeArray } from "../types";
 import { DataUtils } from "../dataUtils";
 
 export interface TaskLoggerLike {
@@ -46,35 +45,53 @@ export const BasicTaskFn = function(name: string, fn: BasicTaskFn) {
     };
 }
 
-export interface StepBasedTaskFn {
-    (args: any, logger: TaskLoggerLike, isPaused: Ref<boolean>): Promise<TaskReturn<any>>;
+export interface StepBasedTaskFn<Payload = any> {
+    (args: Payload, logger: TaskLoggerLike, isPaused: Ref<boolean>): Promise<TaskReturn<any>>;
 }
 
-export const StepBasedTaskFn = function(name: string, fn: StepBasedTaskFn) {
-    return Object.assign(fn, {
-        fn_name: name,
-        isStepBased: true
-    });
+export const StepBasedTaskFn = function(name: string, rootStepFN: BasicTaskFn) {
+
+    const steps: Array<{
+        description: string;
+        fn: BasicTaskFn;
+        pausable?: boolean;
+    }> = [];
+
+    const fn = function(args: any, logger: TaskLoggerLike, state: TempPausedTaskState | null, isPaused: Ref<boolean>): Promise<TaskReturn<any>> {
+        
+        const startingStep = state?.nextStepToExecute || 0;
+
+        for (let i = startingStep; i < steps.length; i++) {
+            const step = steps[i];
+            logger.info(`Executing: ${step.description}`);
+
+
+
+        }
+
+    }
+
+    fn.addStep = function(description: string, stepFn: BasicTaskFn) {
+        steps.push({ description, fn: stepFn });
+        return fn;
+    }
+
+    fn.fn_name = name;
+    fn.isStepBased = true;
+
+    return fn;
 } as any as {
-    new <Name extends string, FN extends StepBasedTaskFn>(name: Name, fn: FN): FN & {
+    new <Name extends string, RootFN extends BasicTaskFn>(name: Name): StepBasedTaskFn<Parameters<RootFN>[0]> & {
         fn_name: Name;
         isStepBased: true
+        addStep(description: string, stepFn: BasicTaskFn): StepBasedTaskFn<Parameters<RootFN>[0]> & {
+            fn_name: Name;
+            isStepBased: true
+        }
     };
 }
 
 
-// export class StepBasedTaskFnFactory<Name extends string> extends TaskFnFactory<Name, StepBasedTaskFn> {
-
-//     constructor(
-//         protected readonly steps: Array<Array<BasicTaskFn>>
-//     ) { }
-
-//     public addStep(stepName: string, stepFns: BasicTaskFn) {
-//         this.steps.push(stepFns);
-//         return this;
-//     }
-
-// }
 
 export class TaskFNRegistry<Registry extends {}> {
 
@@ -82,44 +99,43 @@ export class TaskFNRegistry<Registry extends {}> {
         protected readonly registry: Registry = {} as Registry
     ) {}
 
-    public register<Name extends string, FN extends AbstractTaskFn>(name: Name, fn: FN): TaskFNRegistry<Registry & { [K in Name]: FN & { fn_name: Name } }>;
-    public register<Name extends string, FN extends TaskFn>(fn: FN): TaskFNRegistry<Registry & { [K in FN["fn_name"]]: FN }>;
+    public register<Name extends string, FN extends BasicTaskFn>(name: Name, fn: FN): TaskFNRegistry<Registry & {
+        [K in Name]: FN & { fn_name: Name }
+    }>;
+    // public register<Name extends string, RootFN extends BasicTaskFn>(name: Name, rootFn: RootFN, stepBased: boolean): TaskFNRegistry<Registry & {
+    //     [K in Name]: StepBasedTaskFn<Parameters<RootFN>[0]> & {
+    //         fn_name: Name,
+    //         isStepBased: true
+    //     }
+    // }>;
+    public register<Name extends string, FN extends TaskFn>(fn: FN): TaskFNRegistry<Registry & {
+        [K in FN["fn_name"]]: FN
+    }>;
+
     public register<Name extends string, FN extends TaskFn>(nameOrFN: Name | FN, fn?: FN) {
 
         if ((typeof nameOrFN === "function" || typeof nameOrFN === "object") && ("fn_name" in nameOrFN)) {
+
             (this.registry as any)[nameOrFN["fn_name"]] = nameOrFN;
+
         } else if (fn) {
-            (this.registry as any)[nameOrFN] = fn;
+
+            return this.register(new BasicTaskFn(nameOrFN as Name, fn));
+
         } else {
             throw new Error("Invalid arguments to register method.");
         }
         return this;
     }
 
-    public extend<NewRegistry extends {}>(registry: NewRegistry) {
-        for (const key of Object.keys(registry)) {
-            (this.registry as any)[key] = (registry as any)[key];
-        }
-        return this as unknown as TaskFNRegistry<Registry & NewRegistry>;
-    }
-
 }
 
 
 
 
-export interface ExecOptions {
+export interface TaskExecOptions {
     autoDelete?: boolean;
     storeLogs?: boolean;
-}
-
-export interface TaskHandlerSettings<TaskData extends BaseTaskData<AdditionalMeta>, AdditionalMeta extends Record<string, any>> {
-    loadTask: (id: number) => Promise<TaskData | null>;
-    loadPendingTasks: () => Promise<Array<TaskData>>;
-    saveTask: (data: Omit<TaskData, 'id'>) => Promise<number>;
-
-    defaultLogger?: TaskLoggerLike;
-    persistentLogger?: TaskLoggerLike;
 }
 
 export type BaseTaskData<AdditionalMeta extends Record<string, any>> = AdditionalMeta & {
@@ -127,9 +143,28 @@ export type BaseTaskData<AdditionalMeta extends Record<string, any>> = Additiona
     fn: string;
     args: any;
     status: 'pending' | 'running' | 'paused' | 'completed' | 'failed';
-    execOptions?: ExecOptions;
+    execOptions?: TaskExecOptions;
     created_at: number;
     finished_at?: Date;
+}
+
+export interface TempPausedTaskState {
+    data: any;
+    nextStepToExecute: number;
+}
+
+export interface TaskHandlerSettings<TaskData extends BaseTaskData<AdditionalMeta>, AdditionalMeta extends Record<string, any>> {
+    loadTask: (id: number) => Promise<TaskData | null>;
+    loadPendingTasks: () => Promise<Array<TaskData>>;
+    saveTask: (data: Omit<TaskData, 'id'>) => Promise<number>;
+    deleteTask?: (id: number) => Promise<void>;
+
+    savePausedTaskState?: (taskID: number) => Promise<void>;
+    loadPausedTaskState?: (taskID: number) => Promise<TempPausedTaskState | null>;
+    deleteTaskState?: (taskID: number) => Promise<void>;
+
+    defaultLogger?: TaskLoggerLike;
+    persistentLogger?: TaskLoggerLike;
 }
 
 
@@ -155,7 +190,7 @@ export class TaskHandler<FNRegistry extends Record<string, TaskFn>, TaskData ext
         }
     }
 
-    async enqueueTask<Fn extends keyof FNRegistry>(fn: Fn, args: Parameters<FNRegistry[Fn]>[0], additionalMeta?: AdditionalMeta, execOpts?: ExecOptions): Promise<number> {
+    async enqueueTask<Fn extends keyof FNRegistry>(fn: Fn, args: Parameters<FNRegistry[Fn]>[0], additionalMeta?: AdditionalMeta, execOpts?: TaskExecOptions): Promise<number> {
 
         const meta = (additionalMeta ?? {}) as AdditionalMeta;
         const taskToSave = {
@@ -224,9 +259,9 @@ export class TaskHandler<FNRegistry extends Record<string, TaskFn>, TaskData ext
 
         try {
             if (fn.isStepBased) {
-
+                
             } else {
-                const result = await fn(task.args, logger, this.isPaused);
+                const result = await fn(task.args, logger);
                 task.status = result.success ? 'completed' : 'failed';
                 task.finished_at = new Date();
 

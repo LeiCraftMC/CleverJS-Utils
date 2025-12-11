@@ -58,19 +58,21 @@ const Logger: TaskLoggerLike = {
 
 const tasksRegistry = new TaskFNRegistry()
 
-.register("exampleTask", async (args: { example: boolean }, logger, isPaused) => {
+.register("exampleTask", async (args: { example: boolean }, logger) => {
 
     logger.info("Running exampleTask with args:", JSON.stringify(args));
 
     return { success: true, data: args };
 })
 
-.register("willFail", async (args, logger, isPaused) => {
+.register("willFail", async (args, logger) => {
 
     logger.info("Running willFail with args:", JSON.stringify(args));
 
     throw new Error("Intentional failure");
-});
+})
+
+.register("stepBasedExample", function StepBasedExampleTask(args: { count: number }, logger, isPaused) {
 
 const { tasks: tasksStore, saveTask, loadTask, loadPendingTasks } = createStore();
 
