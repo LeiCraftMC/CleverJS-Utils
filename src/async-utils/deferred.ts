@@ -26,23 +26,23 @@ export class Deferred<T = void> implements Promise<T> {
     }
 
     public resolve(value: T | PromiseLike<T>) {
-        if (!this._resolve) return this.promise;
+        if (!this._resolve) return this satisfies Promise<T>;
 
         this._resolve(value);
         this.resolved = true;
         this.cleanup();
 
-        return this.promise;
+        return this satisfies Promise<T>;
     }
 
     public reject(reason?: any) {
-        if (!this._reject) return this.promise;
+        if (!this._reject) return this satisfies Promise<T>;
 
         this._reject(reason);
         this.resolved = true;
         this.cleanup();
 
-        return this.promise;
+        return this satisfies Promise<T>;
     }
 
     /**
@@ -51,7 +51,7 @@ export class Deferred<T = void> implements Promise<T> {
      * @returns 
      */
     public awaitResult() {
-        return this.promise;
+        return this satisfies Promise<T>;
     }
 
     public then<TResult1 = T, TResult2 = never>(

@@ -1,6 +1,7 @@
 import { Ref } from "ptr.js";
 import { QuickSort } from "../quick-sort";
 import { DataUtils } from "../dataUtils";
+import { Deferred } from "../async-utils/deferred";
 
 export interface TaskLoggerLike {
     debug(...args: any[]): void;
@@ -91,6 +92,7 @@ export const StepBasedTaskFn = function (name: string, rootStepFN: SubTaskStepFn
             if (!stepResult.success) {
                 return stepResult;
             }
+
             if (stepResult.paused) {
                 // dont update nextStepToExecute, so we can resume here
                 return { success: true, paused: true };
@@ -175,18 +177,22 @@ export interface TempPausedTaskState {
     nextStepToExecute: number;
 }
 
+export abstract class AbstractTaskHandlerStorageDriver<TaskData extends BaseTaskData<AdditionalMeta>, AdditionalMeta extends Record<string, any>> {
+
+    abstract loadTask(id: number): Promise<TaskData | null>;
+    abstract loadPausedOrPendingTasks(): Promise<Array<TaskData>>;
+    abstract loadFinishedTasksWithAutoDelete(): Promise<Array<TaskData>>;
+    abstract createTask(data: Omit<TaskData, 'id'>): Promise<number>;
+    abstract updateTask(data: TaskData): Promise<void>;
+    abstract deleteTask(id: number): Promise<void>;
+
+    abstract savePausedTaskState(taskID: number, pausedState: TempPausedTaskState): Promise<void>;
+    abstract loadPausedTaskState(taskID: number): Promise<TempPausedTaskState | null>;
+    abstract deletePausedTaskState(taskID: number): Promise<void>;
+}
+
 export interface TaskHandlerSettings<TaskData extends BaseTaskData<AdditionalMeta>, AdditionalMeta extends Record<string, any>> {
-    loadTask: (id: number) => Promise<TaskData | null>;
-    loadPausedOrPendingTasks: () => Promise<Array<TaskData>>;
-    loadFinishedTasksWithAutoDelete: () => Promise<Array<TaskData>>;
-    createTask: (data: Omit<TaskData, 'id'>) => Promise<number>;
-    updateTask: (data: TaskData) => Promise<void>;
-    deleteTask: (id: number) => Promise<void>;
-
-    savePausedTaskState: (taskID: number, pausedState: TempPausedTaskState) => Promise<void>;
-    loadPausedTaskState: (taskID: number) => Promise<TempPausedTaskState | null>;
-    deletePausedTaskState: (taskID: number) => Promise<void>;
-
+    storage: AbstractTaskHandlerStorageDriver<TaskData, AdditionalMeta>;
     defaultLogger?: TaskLoggerLike;
     persistentLogger?: TaskLoggerLike;
 }
@@ -195,8 +201,12 @@ export interface TaskHandlerSettings<TaskData extends BaseTaskData<AdditionalMet
 export class TaskHandler<FNRegistry extends Record<string, TaskFn>, TaskData extends BaseTaskData<AdditionalMeta>, AdditionalMeta extends Record<string, any>> {
 
     protected processing = false;
+    protected processingWait = new Deferred<void>().resolve();
+
     protected isPaused = new Ref<boolean>(false);
     protected pendingTasks: TaskData[] = [];
+
+    protected readonly storage: AbstractTaskHandlerStorageDriver<TaskData, AdditionalMeta>;
 
     protected readonly tasks: FNRegistry;
 
@@ -204,7 +214,9 @@ export class TaskHandler<FNRegistry extends Record<string, TaskFn>, TaskData ext
         protected readonly settings: TaskHandlerSettings<TaskData, AdditionalMeta>,
         tasks: FNRegistry | Array<FNRegistry[keyof FNRegistry]> | TaskFNRegistry<FNRegistry>
     ) {
+        this.storage = settings.storage;
         this.settings.defaultLogger = this.settings.defaultLogger || console;
+
         if (tasks instanceof TaskFNRegistry) {
             this.tasks = tasks['registry'];
         } else if (tasks instanceof Array) {
@@ -226,9 +238,9 @@ export class TaskHandler<FNRegistry extends Record<string, TaskFn>, TaskData ext
             created_at: Date.now()
         } as unknown as Omit<TaskData, 'id'>;
 
-        const id = await this.settings.createTask(taskToSave);
+        const id = await this.storage.createTask(taskToSave);
 
-        const task = await this.settings.loadTask(id);
+        const task = await this.storage.loadTask(id);
         if (task) {
             this.pendingTasks.push(task);
         }
@@ -238,11 +250,11 @@ export class TaskHandler<FNRegistry extends Record<string, TaskFn>, TaskData ext
     }
 
     async getTask(id: number): Promise<TaskData | null> {
-        return await this.settings.loadTask(id);
+        return await this.storage.loadTask(id);
     }
 
     private async loadPausedOrPendingTasks(): Promise<Array<TaskData>> {
-        const tasks = await this.settings.loadPausedOrPendingTasks();
+        const tasks = await this.storage.loadPausedOrPendingTasks();
 
         // sort so that older tasks are processed first
         return QuickSort.sort(tasks, (base, compare) => {
@@ -251,8 +263,9 @@ export class TaskHandler<FNRegistry extends Record<string, TaskFn>, TaskData ext
     }
 
     async processQueue() {
-        if (this.processing || this.isPaused.getV()) return;
+        if (this.processing || this.isPaused.getV()) return
         this.processing = true;
+        this.processingWait = new Deferred<void>();
 
         try {
             if (this.pendingTasks.length === 0) {
@@ -267,6 +280,7 @@ export class TaskHandler<FNRegistry extends Record<string, TaskFn>, TaskData ext
             }
         } finally {
             this.processing = false;
+            this.processingWait.resolve();
         }
     }
 
@@ -288,7 +302,7 @@ export class TaskHandler<FNRegistry extends Record<string, TaskFn>, TaskData ext
 
                 if (wasPaused) {
 
-                    const pausedState = await this.settings.loadPausedTaskState(task.id);
+                    const pausedState = await this.storage.loadPausedTaskState(task.id);
                     if (!pausedState) {
                         throw new Error(`Paused state for task ID ${task.id} not found.`);
                     }
@@ -302,11 +316,11 @@ export class TaskHandler<FNRegistry extends Record<string, TaskFn>, TaskData ext
 
                 if (result.paused) {
                     task.status = 'paused';
-                    await this.settings.savePausedTaskState(task.id, state);
+                    await this.storage.savePausedTaskState(task.id, state);
                     logger.info(`Task ID ${task.id} paused at step ${state.nextStepToExecute}.`);
                 } else {
                     if (wasPaused) {
-                        await this.settings.deletePausedTaskState(task.id);
+                        await this.storage.deletePausedTaskState(task.id);
                     }
                     task.status = result.success ? 'completed' : 'failed';
                     task.finished_at = Date.now();
@@ -332,22 +346,23 @@ export class TaskHandler<FNRegistry extends Record<string, TaskFn>, TaskData ext
             logger.error('Task execution failed.', error);
         }
 
-        await this.settings.updateTask(task);
+        await this.storage.updateTask(task);
     }
 
     async deleteOldCompletedTasks(thresholdInHours: number) {
         const thresholdTime = Date.now() - thresholdInHours * 3600 * 1000;
-        const tasks = await this.settings.loadFinishedTasksWithAutoDelete();
+        const tasks = await this.storage.loadFinishedTasksWithAutoDelete();
 
         for (const task of tasks) {
             if (task.finished_at && task.finished_at < thresholdTime) {
-                await this.settings.deleteTask(task.id);
+                await this.storage.deleteTask(task.id);
             }
         }
     }
 
     async stopProcessing() {
         this.isPaused.setV(true);
+        await this.processingWait;
     }
 
 }
