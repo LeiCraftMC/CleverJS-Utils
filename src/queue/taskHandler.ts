@@ -35,9 +35,9 @@ export interface TaskFn extends AbstractTaskFn {
 
 export interface BasicTaskFn {
     (args: any, logger: TaskLoggerLike): Promise<TaskReturn>;
-}   
+}
 
-export const BasicTaskFn = function(name: string, fn: BasicTaskFn) {
+export const BasicTaskFn = function (name: string, fn: BasicTaskFn) {
     return Object.assign(fn, {
         fn_name: name
     });
@@ -51,20 +51,29 @@ export interface StepBasedTaskFn<Payload = any, State extends TempPausedTaskStat
     (args: Payload, logger: TaskLoggerLike, state: State, isPaused: Ref<boolean>): Promise<StepBasedTaskReturn>;
 }
 
-export interface SubTaskStepFn {
-    (args: any, logger: TaskLoggerLike, state: TempPausedTaskState, isPaused: Ref<boolean>): Promise<StepBasedTaskReturn>;
+export interface SubTaskStepFn<Payload = any, State extends TempPausedTaskState = TempPausedTaskState> {
+    (args: Payload, logger: TaskLoggerLike, state: State, isPaused: Ref<boolean>): Promise<StepBasedTaskReturn>;
 }
 
-export const StepBasedTaskFn = function(name: string, rootStepFN: SubTaskStepFn) {
+type StepBasedTaskFnInstance<Name extends string, RootFN extends SubTaskStepFn> = StepBasedTaskFn<Parameters<RootFN>[0], Parameters<RootFN>[2]> & {
+    fn_name: Name;
+    isStepBased: true
+    addStep(description: string, stepFn: SubTaskStepFn<Parameters<RootFN>[0], Parameters<RootFN>[2]>): StepBasedTaskFnInstance<Name, RootFN>;
+};
+
+export const StepBasedTaskFn = function (name: string, rootStepFN: SubTaskStepFn) {
 
     const steps: Array<{
         description: string;
         fn: SubTaskStepFn;
         pausable?: boolean;
-    }> = [];
+    }> = [{
+        description: "Initial Step",
+        fn: rootStepFN
+    }];
 
-    const fn = async function(args: any, logger: TaskLoggerLike, state: TempPausedTaskState, isPaused: Ref<boolean>): Promise<StepBasedTaskReturn> {
-        
+    const fn = async function (args: any, logger: TaskLoggerLike, state: TempPausedTaskState, isPaused: Ref<boolean>): Promise<StepBasedTaskReturn> {
+
         const startingStep = state?.nextStepToExecute || 0;
 
         for (let i = startingStep; i < steps.length; i++) {
@@ -91,7 +100,7 @@ export const StepBasedTaskFn = function(name: string, rootStepFN: SubTaskStepFn)
         return { success: true, paused: false };
     }
 
-    fn.addStep = function(description: string, stepFn: SubTaskStepFn) {
+    fn.addStep = function (description: string, stepFn: SubTaskStepFn) {
         steps.push({ description, fn: stepFn });
         return fn;
     }
@@ -101,14 +110,7 @@ export const StepBasedTaskFn = function(name: string, rootStepFN: SubTaskStepFn)
 
     return fn;
 } as any as {
-    new <Name extends string, RootFN extends SubTaskStepFn>(name: Name): StepBasedTaskFn<Parameters<RootFN>[0], Parameters<RootFN>[2]> & {
-        fn_name: Name;
-        isStepBased: true
-        addStep(description: string, stepFn: SubTaskStepFn): StepBasedTaskFn<Parameters<RootFN>[0], Parameters<RootFN>[2]> & {
-            fn_name: Name;
-            isStepBased: true
-        }
-    };
+    new <Name extends string, RootFN extends SubTaskStepFn>(name: Name, rootStepFN: RootFN):  StepBasedTaskFnInstance<Name, RootFN>;
 }
 
 
@@ -117,7 +119,7 @@ export class TaskFNRegistry<Registry extends {}> {
 
     constructor(
         protected readonly registry: Registry = {} as Registry
-    ) {}
+    ) { }
 
     public register<Name extends string, FN extends BasicTaskFn>(name: Name, fn: FN): TaskFNRegistry<Registry & {
         [K in Name]: FN & { fn_name: Name }
@@ -175,14 +177,15 @@ export interface TempPausedTaskState {
 
 export interface TaskHandlerSettings<TaskData extends BaseTaskData<AdditionalMeta>, AdditionalMeta extends Record<string, any>> {
     loadTask: (id: number) => Promise<TaskData | null>;
-    loadPendingTasks: () => Promise<Array<TaskData>>;
+    loadPausedOrPendingTasks: () => Promise<Array<TaskData>>;
     loadFinishedTasksWithAutoDelete: () => Promise<Array<TaskData>>;
-    saveTask: (data: Omit<TaskData, 'id'>) => Promise<number>;
+    createTask: (data: Omit<TaskData, 'id'>) => Promise<number>;
+    updateTask: (data: TaskData) => Promise<void>;
     deleteTask: (id: number) => Promise<void>;
 
     savePausedTaskState: (taskID: number, pausedState: TempPausedTaskState) => Promise<void>;
     loadPausedTaskState: (taskID: number) => Promise<TempPausedTaskState | null>;
-    deleteTaskState: (taskID: number) => Promise<void>;
+    deletePausedTaskState: (taskID: number) => Promise<void>;
 
     defaultLogger?: TaskLoggerLike;
     persistentLogger?: TaskLoggerLike;
@@ -223,7 +226,7 @@ export class TaskHandler<FNRegistry extends Record<string, TaskFn>, TaskData ext
             created_at: Date.now()
         } as unknown as Omit<TaskData, 'id'>;
 
-        const id = await this.settings.saveTask(taskToSave);
+        const id = await this.settings.createTask(taskToSave);
 
         const task = await this.settings.loadTask(id);
         if (task) {
@@ -238,8 +241,8 @@ export class TaskHandler<FNRegistry extends Record<string, TaskFn>, TaskData ext
         return await this.settings.loadTask(id);
     }
 
-    private async loadPendingTasks(): Promise<Array<TaskData>> {
-        const tasks = await this.settings.loadPendingTasks();
+    private async loadPausedOrPendingTasks(): Promise<Array<TaskData>> {
+        const tasks = await this.settings.loadPausedOrPendingTasks();
 
         // sort so that older tasks are processed first
         return QuickSort.sort(tasks, (base, compare) => {
@@ -253,7 +256,7 @@ export class TaskHandler<FNRegistry extends Record<string, TaskFn>, TaskData ext
 
         try {
             if (this.pendingTasks.length === 0) {
-                const pending = await this.loadPendingTasks();
+                const pending = await this.loadPausedOrPendingTasks();
                 this.pendingTasks.push(...pending);
             }
 
@@ -278,11 +281,11 @@ export class TaskHandler<FNRegistry extends Record<string, TaskFn>, TaskData ext
 
         try {
             if (fn.isStepBased) {
-                
+
                 let state = { data: null, nextStepToExecute: 0 };
 
                 const wasPaused = task.status === 'paused';
-                
+
                 if (wasPaused) {
 
                     const pausedState = await this.settings.loadPausedTaskState(task.id);
@@ -291,7 +294,7 @@ export class TaskHandler<FNRegistry extends Record<string, TaskFn>, TaskData ext
                     }
                     state = pausedState;
 
-                    logger.info(`Resuming paused task ID ${task.id} from step ${pausedState.nextStepToExecute}...`);                    
+                    logger.info(`Resuming paused task ID ${task.id} from step ${pausedState.nextStepToExecute}...`);
                 }
 
                 task.status = 'running';
@@ -303,7 +306,7 @@ export class TaskHandler<FNRegistry extends Record<string, TaskFn>, TaskData ext
                     logger.info(`Task ID ${task.id} paused at step ${state.nextStepToExecute}.`);
                 } else {
                     if (wasPaused) {
-                        await this.settings.deleteTaskState(task.id);
+                        await this.settings.deletePausedTaskState(task.id);
                     }
                     task.status = result.success ? 'completed' : 'failed';
                     task.finished_at = Date.now();
@@ -329,7 +332,7 @@ export class TaskHandler<FNRegistry extends Record<string, TaskFn>, TaskData ext
             logger.error('Task execution failed.', error);
         }
 
-        await this.settings.saveTask(task);
+        await this.settings.updateTask(task);
     }
 
     async deleteOldCompletedTasks(thresholdInHours: number) {
