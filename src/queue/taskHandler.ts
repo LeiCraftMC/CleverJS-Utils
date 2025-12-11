@@ -175,6 +175,12 @@ export class TaskHandler<FNRegistry extends Record<string, TaskHandler.TaskFn>, 
         await this.processingWait;
     }
 
+    async resumeProcessing() {
+        if (!this.isPaused.getV()) return;
+        this.isPaused.setV(false);
+        await this.processQueue();
+    }
+
 }
 
 export namespace TaskHandler {
