@@ -101,7 +101,7 @@ export class TaskHandler<
     }
 
     protected async runTask(task: TaskData) {
-        const logger = task.execOptions?.storeLogs ? this.settings.persistentLogger || this.settings.defaultLogger! : this.settings.defaultLogger!;
+        const logger = task.execOptions?.storeLogs ? new this.settings.persistentLogger!(task.id) : this.settings.defaultLogger!;
         const fn = this.tasks[task.fn];
 
         if (!fn) {
@@ -195,6 +195,11 @@ export namespace TaskHandler {
         info(...args: any[]): void;
         warn(...args: any[]): void;
         error(...args: any[]): void;
+    }
+
+
+    export interface PersistentTaskLoggerLike {
+        new (taskID: number): TaskLoggerLike;
     }
 
     export interface TaskErrorResult {
@@ -387,7 +392,7 @@ export namespace TaskHandler {
     export interface Settings<TaskData extends BaseTaskData<AdditionalMeta>, AdditionalMeta extends Record<string, any>, StorageDriver extends AbstractStorageDriver<TaskData, AdditionalMeta>> {
         storage: StorageDriver;
         defaultLogger?: TaskLoggerLike;
-        persistentLogger?: TaskLoggerLike;
+        persistentLogger?: PersistentTaskLoggerLike;
     }
 
 
