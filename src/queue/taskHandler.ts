@@ -101,7 +101,7 @@ export class TaskHandler<
     }
 
     protected async runTask(task: TaskData) {
-        const logger = task.execOptions?.storeLogs ? new this.settings.persistentLogger!(task.id) : this.settings.defaultLogger!;
+        const logger = task.execOptions?.storeLogs ? new this.settings.persistentLogger!(task.id) : this.settings.defaultLogger! as TaskHandler.TaskLoggerLike;
         const fn = this.tasks[task.fn];
 
         if (!fn) {
@@ -162,6 +162,12 @@ export class TaskHandler<
         }
 
         await this.storage.updateTask(task);
+        
+        // @ts-ignore
+        if (logger.type === 'persistent') {
+            // @ts-ignore
+            await logger.close();
+        }
     }
 
     async deleteOldCompletedTasks(thresholdInHours: number) {
@@ -190,17 +196,23 @@ export class TaskHandler<
 
 export namespace TaskHandler {
 
-    export interface TaskLoggerLike {
+    export interface BasicTaskLoggerLike {
         debug(...args: any[]): void;
         info(...args: any[]): void;
         warn(...args: any[]): void;
         error(...args: any[]): void;
     }
 
-
-    export interface PersistentTaskLoggerLike {
-        new (taskID: number): TaskLoggerLike;
+    export interface PersistentTaskLoggerLike extends BasicTaskLoggerLike {
+        readonly type: 'persistent';
+        close(): Promise<void>;
     }
+
+    export interface PersistentTaskLoggerConstructorLike {
+        new (taskID: number): PersistentTaskLoggerLike;
+    }
+
+    export type TaskLoggerLike = BasicTaskLoggerLike | PersistentTaskLoggerLike
 
     export interface TaskErrorResult {
         success: false;
@@ -219,7 +231,7 @@ export namespace TaskHandler {
     }
 
     export interface AbstractTaskFn {
-        (args: any, logger: TaskLoggerLike, ...args2: any): Promise<TaskReturn<any>>
+        (args: any, logger: BasicTaskLoggerLike, ...args2: any): Promise<TaskReturn<any>>
     }
 
     export interface TaskFn extends AbstractTaskFn {
@@ -228,7 +240,7 @@ export namespace TaskHandler {
     }
 
     export interface BasicTaskFn {
-        (args: any, logger: TaskLoggerLike): Promise<TaskReturn<any>>;
+        (args: any, logger: BasicTaskLoggerLike): Promise<TaskReturn<any>>;
     }
 
     export const BasicTaskFn = function (name: string, fn: BasicTaskFn) {
@@ -242,11 +254,11 @@ export namespace TaskHandler {
     }
 
     export interface StepBasedTaskFn<Payload = any, StateData extends Record<string, any> = any> {
-        (args: Payload, logger: TaskLoggerLike, state: TempPausedTaskState<StateData>, isPaused: Ref<boolean>): Promise<StepBasedTaskReturn>;
+        (args: Payload, logger: BasicTaskLoggerLike, state: TempPausedTaskState<StateData>, isPaused: Ref<boolean>): Promise<StepBasedTaskReturn>;
     }
 
     export interface SubTaskStepFn<Payload = any, StateData extends Record<string, any> = any> {
-        (args: Payload, logger: TaskLoggerLike, state: StateData, isPaused: Ref<boolean>): Promise<StepBasedTaskReturn>;
+        (args: Payload, logger: BasicTaskLoggerLike, state: StateData, isPaused: Ref<boolean>): Promise<StepBasedTaskReturn>;
     }
 
     type StepBasedTaskFnInstance<Name extends string, RootFN extends SubTaskStepFn> = StepBasedTaskFn<Parameters<RootFN>[0], Parameters<RootFN>[2]> & {
@@ -266,7 +278,7 @@ export namespace TaskHandler {
             fn: rootStepFN
         }];
 
-        const fn = async function (args: any, logger: TaskLoggerLike, state: TempPausedTaskState<any>, isPaused: Ref<boolean>): Promise<StepBasedTaskReturn> {
+        const fn = async function (args: any, logger: BasicTaskLoggerLike, state: TempPausedTaskState<any>, isPaused: Ref<boolean>): Promise<StepBasedTaskReturn> {
 
             const startingStep = state?.nextStepToExecute || 0;
 
@@ -391,8 +403,8 @@ export namespace TaskHandler {
 
     export interface Settings<TaskData extends BaseTaskData<AdditionalMeta>, AdditionalMeta extends Record<string, any>, StorageDriver extends AbstractStorageDriver<TaskData, AdditionalMeta>> {
         storage: StorageDriver;
-        defaultLogger?: TaskLoggerLike;
-        persistentLogger?: PersistentTaskLoggerLike;
+        defaultLogger?: BasicTaskLoggerLike;
+        persistentLogger?: PersistentTaskLoggerConstructorLike;
     }
 
 

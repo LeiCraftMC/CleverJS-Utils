@@ -60,7 +60,7 @@ class FakeInMemoryTaskStorage extends TaskHandler.AbstractStorageDriver<TaskData
 
 
 const logs: Array<{ level: string; message: string }> = [];
-const Logger: TaskHandler.TaskLoggerLike = {
+const Logger: TaskHandler.BasicTaskLoggerLike = {
     debug: (...args: any[]) => {
         logs.push({ level: "debug", message: args.join(" ") });
         console.debug(...args);
