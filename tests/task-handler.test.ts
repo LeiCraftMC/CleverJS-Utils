@@ -79,17 +79,15 @@ const Logger: TaskHandler.TaskLoggerLike = {
     },
 };
 
-const stepBasedExampleTask = new TaskHandler.StepBasedTaskFn("stepBasedExample", async (args: { count: number }, logger, state: TaskHandler.TempPausedTaskState & { data: { doneCount: number } }) => {
+const stepBasedExampleTask = new TaskHandler.StepBasedTaskFn("stepBasedExample", async (args: { count: number }, logger, state: { doneCount: number }) => {
 
-    state.data = {
-        doneCount: 0
-    }
+    state.doneCount = 0;
 
     return { success: true };
 })
     .addStep("First Long Step", async (args, logger, state, isPaused) => {
 
-        const startingIndex = state.data.doneCount;
+        const startingIndex = state.doneCount;
         logger.info("Starting First Long Step from index", startingIndex);
 
         for (let i = startingIndex; i < args.count; i++) {
@@ -98,15 +96,15 @@ const stepBasedExampleTask = new TaskHandler.StepBasedTaskFn("stepBasedExample",
                 return { success: true, paused: true };
             }
             await Delay.wait(100);
-            state.data.doneCount = i + 1;
-            logger.info(`First Long Step progress: ${state.data.doneCount}/${args.count}`);
+            state.doneCount = i + 1;
+            logger.info(`First Long Step progress: ${state.doneCount}/${args.count}`);
         }
 
         return { success: true };
     })
     .addStep("Second Long Step", async (args, logger, state, isPaused) => {
 
-        const startingIndex = state.data.doneCount;
+        const startingIndex = state.doneCount;
         logger.info("Starting Second Long Step from index", startingIndex);
 
         for (let i = startingIndex; i < args.count; i++) {
@@ -115,8 +113,8 @@ const stepBasedExampleTask = new TaskHandler.StepBasedTaskFn("stepBasedExample",
                 return { success: true, paused: true };
             }
             await Delay.wait(100);
-            state.data.doneCount = i + 1;
-            logger.info(`Second Long Step progress: ${state.data.doneCount}/${args.count}`);
+            state.doneCount = i + 1;
+            logger.info(`Second Long Step progress: ${state.doneCount}/${args.count}`);
         }
         return { success: true, data: null };
     });

@@ -107,7 +107,7 @@ export class TaskHandler<FNRegistry extends Record<string, TaskHandler.TaskFn>, 
         try {
             if (fn.isStepBased) {
 
-                let state = { data: null, nextStepToExecute: 0 };
+                let state = { data: {}, nextStepToExecute: 0 };
 
                 const wasPaused = task.status === 'paused';
 
@@ -225,12 +225,12 @@ export namespace TaskHandler {
         };
     }
 
-    export interface StepBasedTaskFn<Payload = any, State extends TempPausedTaskState = TempPausedTaskState> {
-        (args: Payload, logger: TaskLoggerLike, state: State, isPaused: Ref<boolean>): Promise<StepBasedTaskReturn>;
+    export interface StepBasedTaskFn<Payload = any, StateData extends Record<string, any> = any> {
+        (args: Payload, logger: TaskLoggerLike, state: TempPausedTaskState<StateData>, isPaused: Ref<boolean>): Promise<StepBasedTaskReturn>;
     }
 
-    export interface SubTaskStepFn<Payload = any, State extends TempPausedTaskState = TempPausedTaskState> {
-        (args: Payload, logger: TaskLoggerLike, state: State, isPaused: Ref<boolean>): Promise<StepBasedTaskReturn>;
+    export interface SubTaskStepFn<Payload = any, StateData extends Record<string, any> = any> {
+        (args: Payload, logger: TaskLoggerLike, state: StateData, isPaused: Ref<boolean>): Promise<StepBasedTaskReturn>;
     }
 
     type StepBasedTaskFnInstance<Name extends string, RootFN extends SubTaskStepFn> = StepBasedTaskFn<Parameters<RootFN>[0], Parameters<RootFN>[2]> & {
@@ -250,7 +250,7 @@ export namespace TaskHandler {
             fn: rootStepFN
         }];
 
-        const fn = async function (args: any, logger: TaskLoggerLike, state: TempPausedTaskState, isPaused: Ref<boolean>): Promise<StepBasedTaskReturn> {
+        const fn = async function (args: any, logger: TaskLoggerLike, state: TempPausedTaskState<any>, isPaused: Ref<boolean>): Promise<StepBasedTaskReturn> {
 
             const startingStep = state?.nextStepToExecute || 0;
 
@@ -265,7 +265,7 @@ export namespace TaskHandler {
                 const step = steps[i];
                 logger.info(`Executing: ${step.description}`);
 
-                const stepResult = await step.fn(args, logger, state, isPaused);
+                const stepResult = await step.fn(args, logger, state.data, isPaused);
                 if (!stepResult.success) {
                     return stepResult;
                 }
@@ -354,8 +354,8 @@ export namespace TaskHandler {
         message: string | null;
     }
 
-    export interface TempPausedTaskState {
-        data: any;
+    export interface TempPausedTaskState<T extends Record<string, any> = Record<string, any>> {
+        data: T;
         nextStepToExecute: number;
     }
 
