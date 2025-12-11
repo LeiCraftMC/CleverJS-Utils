@@ -6,7 +6,12 @@ import { Optional } from "../types";
 
 
 
-export class TaskHandler<FNRegistry extends Record<string, TaskHandler.TaskFn>, TaskData extends TaskHandler.BaseTaskData<AdditionalMeta>, AdditionalMeta extends Record<string, any>> {
+export class TaskHandler<
+    FNRegistry extends Record<string, TaskHandler.TaskFn>,
+    StorageDriver extends TaskHandler.AbstractStorageDriver<TaskData, AdditionalMeta>,
+    TaskData extends TaskHandler.BaseTaskData<AdditionalMeta>,
+    AdditionalMeta extends Record<string, any>,
+> {
 
     protected processing = false;
     protected processingWait = new Deferred<void>().resolve();
@@ -14,12 +19,12 @@ export class TaskHandler<FNRegistry extends Record<string, TaskHandler.TaskFn>, 
     protected isPaused = new Ref<boolean>(false);
     protected pendingTasks: TaskData[] = [];
 
-    protected readonly storage: TaskHandler.AbstractStorageDriver<TaskData, AdditionalMeta>;
+    protected readonly storage: StorageDriver;
 
     protected readonly tasks: FNRegistry;
 
     constructor(
-        protected readonly settings: TaskHandler.Settings<TaskData, AdditionalMeta>,
+        protected readonly settings: TaskHandler.Settings<TaskData, AdditionalMeta, StorageDriver>,
         tasks: FNRegistry | Array<FNRegistry[keyof FNRegistry]> | TaskHandler.TaskFNRegistry<FNRegistry>
     ) {
         this.storage = settings.storage;
@@ -34,9 +39,9 @@ export class TaskHandler<FNRegistry extends Record<string, TaskHandler.TaskFn>, 
         }
     }
 
-    async enqueueTask<Fn extends keyof FNRegistry>(fn: Fn, args: Parameters<FNRegistry[Fn]>[0], additionalMeta?: AdditionalMeta, execOpts?: TaskHandler.TaskExecOptions): Promise<number> {
+    async enqueueTask<Fn extends keyof FNRegistry>(fn: Fn, args: Parameters<FNRegistry[Fn]>[0], additionalMeta: AdditionalMeta, execOpts?: TaskHandler.TaskExecOptions): Promise<number> {
 
-        const meta = (additionalMeta ?? {}) as AdditionalMeta;
+        const meta = additionalMeta;
         const taskToSave = {
             ...meta,
             fn: fn as string,
@@ -379,8 +384,8 @@ export namespace TaskHandler {
         abstract deletePausedTaskState(taskID: number): Promise<void>;
     }
 
-    export interface Settings<TaskData extends BaseTaskData<AdditionalMeta>, AdditionalMeta extends Record<string, any>> {
-        storage: AbstractStorageDriver<TaskData, AdditionalMeta>;
+    export interface Settings<TaskData extends BaseTaskData<AdditionalMeta>, AdditionalMeta extends Record<string, any>, StorageDriver extends AbstractStorageDriver<TaskData, AdditionalMeta>> {
+        storage: StorageDriver;
         defaultLogger?: TaskLoggerLike;
         persistentLogger?: TaskLoggerLike;
     }

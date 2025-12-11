@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { TaskHandler } from "../src/queue/taskHandler";
 import { Delay } from "@cleverjs/utils";
 
-type Meta = Record<string, unknown>;
+type Meta = { testMeta: string };
 type TaskData = TaskHandler.BaseTaskData<Meta>;
 
 const waitFor = async (predicate: () => Promise<boolean>, timeoutMs = 200, stepMs = 10) => {
@@ -14,7 +14,7 @@ const waitFor = async (predicate: () => Promise<boolean>, timeoutMs = 200, stepM
     throw new Error("Timed out waiting for condition");
 };
 
-class FakeInMemoryTaskStorage extends TaskHandler.AbstractStorageDriver<TaskData, {}> {
+class FakeInMemoryTaskStorage extends TaskHandler.AbstractStorageDriver<TaskData, Meta> {
 
     private id = 0;
     private tasks = new Map<number, string>();
@@ -149,7 +149,7 @@ const handler = createHandler();
 describe("TaskHandler", () => {
     test("processes an enqueued task and marks it completed", async () => {
 
-        const taskId = await handler.enqueueTask("exampleTask", { example: true });
+        const taskId = await handler.enqueueTask("exampleTask", { example: true }, {  });
 
         await waitFor(async () => {
             const task = (await handler.getTask(taskId) as any)
@@ -164,7 +164,7 @@ describe("TaskHandler", () => {
 
     test("marks a task as failed when the function throws", async () => {
 
-        const taskId = await handler.enqueueTask("willFail", { value: 1 });
+        const taskId = await handler.enqueueTask("willFail", { value: 1 }, {  });
 
         await waitFor(async () => (await handler.getTask(taskId) as any)?.status === "failed");
 
@@ -181,6 +181,11 @@ describe("TaskHandler", () => {
             args: { from: "storage" },
             status: "pending",
             created_at: Date.now(),
+            testMeta: "metaValue",
+            execOptions: {},
+            finished_at: null,
+            message: null,
+            result: null,
         });
 
         await handler.processQueue();
@@ -193,7 +198,7 @@ describe("TaskHandler", () => {
 
     test("handles step-based tasks with pausing and resuming", async () => {
 
-        const taskId = await handler.enqueueTask("stepBasedExample", { count: 5 });
+        const taskId = await handler.enqueueTask("stepBasedExample", { count: 5 }, { testMeta: "step-based" });
 
         await Delay.wait(250);
 
