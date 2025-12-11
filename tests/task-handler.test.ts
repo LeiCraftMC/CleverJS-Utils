@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { BaseTaskData, BasicTaskFn, TaskFNRegistry, TaskHandler, TaskLoggerLike, TaskFn, TempPausedTaskState, StepBasedTaskFn, AbstractTaskHandlerStorageDriver } from "../src/queue/taskHandler";
+import { TaskHandler } from "../src/queue/taskHandler";
 import { Delay } from "@cleverjs/utils";
 
 type Meta = Record<string, unknown>;
-type TaskData = BaseTaskData<Meta>;
+type TaskData = TaskHandler.BaseTaskData<Meta>;
 
 const waitFor = async (predicate: () => Promise<boolean>, timeoutMs = 200, stepMs = 10) => {
     const start = Date.now();
@@ -14,7 +14,7 @@ const waitFor = async (predicate: () => Promise<boolean>, timeoutMs = 200, stepM
     throw new Error("Timed out waiting for condition");
 };
 
-class FakeInMemoryTaskStorage extends AbstractTaskHandlerStorageDriver<TaskData, {}> {
+class FakeInMemoryTaskStorage extends TaskHandler.AbstractStorageDriver<TaskData, {}> {
 
     private id = 0;
     private tasks = new Map<number, string>();
@@ -49,7 +49,7 @@ class FakeInMemoryTaskStorage extends AbstractTaskHandlerStorageDriver<TaskData,
     async loadPausedTaskState(requestedId: number) {
         return JSON.parse(this.taskStates.get(requestedId) ?? "null");
     }
-    async savePausedTaskState(requestedId: number, state: TempPausedTaskState) {
+    async savePausedTaskState(requestedId: number, state: TaskHandler.TempPausedTaskState) {
         this.taskStates.set(requestedId, JSON.stringify(state));
     }
     async deletePausedTaskState(requestedId: number) {
@@ -60,7 +60,7 @@ class FakeInMemoryTaskStorage extends AbstractTaskHandlerStorageDriver<TaskData,
 
 
 const logs: Array<{ level: string; message: string }> = [];
-const Logger: TaskLoggerLike = {
+const Logger: TaskHandler.TaskLoggerLike = {
     debug: (...args: any[]) => {
         logs.push({ level: "debug", message: args.join(" ") });
         console.debug(...args);
@@ -79,7 +79,7 @@ const Logger: TaskLoggerLike = {
     },
 };
 
-const stepBasedExampleTask = new StepBasedTaskFn("stepBasedExample", async (args: { count: number }, logger, state: TempPausedTaskState & { data: { doneCount: number } }) => {
+const stepBasedExampleTask = new TaskHandler.StepBasedTaskFn("stepBasedExample", async (args: { count: number }, logger, state: TaskHandler.TempPausedTaskState & { data: { doneCount: number } }) => {
 
     state.data = {
         doneCount: 0
@@ -121,7 +121,7 @@ const stepBasedExampleTask = new StepBasedTaskFn("stepBasedExample", async (args
         return { success: true };
     });
 
-const tasksRegistry = new TaskFNRegistry()
+const tasksRegistry = new TaskHandler.TaskFNRegistry()
 
     .register("exampleTask", async (args: { example: boolean }, logger) => {
 
