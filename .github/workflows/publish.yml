@@ -12,6 +12,8 @@ jobs:
   publish:
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
@@ -41,4 +43,4 @@ jobs:
 
       - name: Publish to npm
         if: steps.check.outputs.published == 'false'
-        run: bun publish
+        run: bun publish --provenance
