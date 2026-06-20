@@ -6,37 +6,11 @@ on:
     paths: [package.json]
 
 jobs:
-  check-version:
-    runs-on: ubuntu-latest
-    outputs:
-      changed: ${{ steps.diff.outputs.changed }}
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
-      - name: Check if version changed
-        id: diff
-        run: |
-          OLD_VERSION=$(git show HEAD~1:package.json | jq -r '.version')
-          NEW_VERSION=$(jq -r '.version' package.json)
-          echo "old_version=$OLD_VERSION" >> "$GITHUB_OUTPUT"
-          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-          if [ "$OLD_VERSION" != "$NEW_VERSION" ]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "Version changed: $OLD_VERSION → $NEW_VERSION"
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "Version unchanged ($NEW_VERSION) — skipping publish"
-          fi
-
   test:
     uses: ./.github/workflows/test.yml
 
   publish:
-    needs: [check-version, test]
-    if: needs.check-version.outputs.changed == 'true'
+    needs: test
     runs-on: ubuntu-latest
 
     steps:
@@ -49,8 +23,22 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Check if version is already published
+        id: check
+        run: |
+          PACKAGE_NAME=$(jq -r '.name' package.json)
+          VERSION=$(jq -r '.version' package.json)
+          if npm view "$PACKAGE_NAME@$VERSION" version &>/dev/null; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "Version $VERSION is already published — skipping"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "Version $VERSION is new — publishing"
+          fi
+
       - name: Build
         run: bun run build
 
       - name: Publish to npm
+        if: steps.check.outputs.published == 'false'
         run: bun publish
