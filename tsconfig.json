@@ -1,19 +1,8 @@
 {
-  "compilerOptions": {
-    "lib": ["ESNext"],
-    "target": "ESNext",
-    "moduleResolution": "node",
-    "sourceMap": true,
-    "strict": true,
-    "skipLibCheck": true,
-    "esModuleInterop": true,
-    "paths": {
-      "@cleverjs/utils": ["./src/index.ts"]
+    "extends": "./tsconfig/tsconfig.base.json",
+    "compilerOptions": {
+        "moduleResolution": "bundler",
+        "types": [ "node", "bun" ],
+        "strict": true
     }
-  },
-	"include": [
-    "src/**/*",
-    "samples/**/*",
-    "tests/**/*"
-  ]
 }

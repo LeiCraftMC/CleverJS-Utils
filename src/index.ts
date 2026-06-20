@@ -8,7 +8,7 @@ export * from "./async-utils/throttledExecutor";
 
 export * from "./queue/basic";
 export * from "./queue/autoProcessingQueue";
-export * from "./queue/taskHandler";
+export * from "./job-handler/taskHandler";
 
 export * from "./dataUtils";
 export * from "./delay";

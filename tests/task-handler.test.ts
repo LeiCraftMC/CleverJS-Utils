@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { TaskHandler } from "../src/queue/taskHandler";
+import { TaskHandler } from "../src/job-handler/taskHandler";
 import { Delay } from "@cleverjs/utils";
 
 type Meta = { testMeta: string };

@@ -5,11 +5,12 @@
     "main": "./dist/cjs/index.js",
     "types": "./dist/types/index.d.ts",
     "scripts": {
+        "typecheck": "tsc -p ./tsconfig/tsconfig.typecheck.json && echo 'Typecheck passed!'",
         "test": "bun test",
         "build": "bun run build:esm && bun run build:cjs && bun run build:types",
-        "build:esm": "rm -rf dist/esm && tsc -p tsconfig.esm.json",
-        "build:cjs": "rm -rf dist/cjs && tsc -p tsconfig.cjs.json",
-        "build:types": "rm -rf dist/types && tsc -p tsconfig.types.json",
+        "build:esm": "rm -rf dist/esm && tsc -p ./tsconfig/tsconfig.esm.json",
+        "build:cjs": "rm -rf dist/cjs && tsc -p ./tsconfig/tsconfig.cjs.json",
+        "build:types": "rm -rf dist/types && tsc -p ./tsconfig/tsconfig.types.json",
         "release": "bun run test && bun run build && bun publish"
     },
     "repository": {
